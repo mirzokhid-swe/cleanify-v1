@@ -33,7 +33,8 @@ func (stg orderItemRepo) Create(userID int64, entity models.CreateOrderItemModel
 		status,
 		description,
 		is_countable,
-		order_item_type_id
+		order_item_type_id,
+		created_by
 	) VALUES (
 		$1,
 		$2,
@@ -43,7 +44,8 @@ func (stg orderItemRepo) Create(userID int64, entity models.CreateOrderItemModel
 		$6,
 		$7,
 		$8,
-		$9
+		$9,
+		$10
 	) RETURNING id`,
 		entity.OrderID,
 		entity.ItemType,
@@ -54,6 +56,7 @@ func (stg orderItemRepo) Create(userID int64, entity models.CreateOrderItemModel
 		entity.Description,
 		entity.IsCountable,
 		entity.OrderItemTypeID,
+		userID,
 	).Scan(&id)
 
 	if err != nil {
