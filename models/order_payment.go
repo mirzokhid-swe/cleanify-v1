@@ -32,6 +32,19 @@ func PaymentAmountError(amount, remaining float64) string {
 	return ""
 }
 
+// PaymentAmountErrorFor applies PaymentAmountError to an order summary. An
+// order without items (Total == 0) has no known price yet, so any positive
+// amount is accepted — otherwise a courier could never record such a payment.
+func PaymentAmountErrorFor(amount float64, s PaymentSummary) string {
+	if s.Total == 0 {
+		if amount <= 0 {
+			return "Summa noto'g'ri"
+		}
+		return ""
+	}
+	return PaymentAmountError(amount, s.Remaining)
+}
+
 type DeleteTransactionRequest struct {
 	CompanyID string `form:"company_id" binding:"required"`
 }

@@ -11,6 +11,8 @@ CREATE INDEX IF NOT EXISTS idx_order_items_order ON order_items (order_id);
 
 -- To'lov holati qoidasi bitta joyda. Go uni to'lov va buyum o'zgarishlaridan
 -- keyin chaqiradi, backfill (012) ham shu funksiyani ishlatadi. Trigger yo'q.
+-- Summalar butun so'mgacha yaxlitlanadi: buyum o'lchamlari float32 orqali
+-- kelgani uchun jami 175599.9946 kabi chiqadi, xodim esa 175 600 to'laydi.
 -- NULL: buyum ham, to'lov ham yo'q (ekranda "To'lanmagan"); 1 To'lanmagan;
 -- 2 Qisman; 3 To'langan (qolgan <= payment_tolerance). payment_status_manual
 -- bo'lsa o'zgartirmaydi va NULL qaytaradi.
@@ -21,8 +23,8 @@ DECLARE
 BEGIN
   SELECT company_id, payment_status_manual INTO v_company, v_manual FROM orders WHERE id = p_order_id;
   IF NOT FOUND OR v_manual THEN RETURN NULL; END IF;
-  SELECT COALESCE(SUM(price * width * height), 0) INTO v_total FROM order_items WHERE order_id = p_order_id;
-  SELECT COALESCE(SUM(amount), 0) INTO v_paid FROM transactions
+  SELECT ROUND(COALESCE(SUM(price * width * height), 0)::numeric) INTO v_total FROM order_items WHERE order_id = p_order_id;
+  SELECT ROUND(COALESCE(SUM(amount), 0)::numeric) INTO v_paid FROM transactions
     WHERE payer_type = 'orders' AND payer_id = p_order_id AND deleted_at IS NULL;
   SELECT (value #>> '{}')::numeric INTO v_tol FROM company_settings
     WHERE company_id = v_company AND key = 'payment_tolerance';

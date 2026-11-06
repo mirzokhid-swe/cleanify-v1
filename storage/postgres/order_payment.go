@@ -9,9 +9,11 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
+// Totals are rounded to whole so'm (item sizes come through float32, so raw
+// sums look like 175599.9946 while people pay 175 600).
 const paymentSummarySQL = `select o.payment_status,
-		coalesce((select sum(oi.price * oi.width * oi.height) from order_items oi where oi.order_id = o.id), 0),
-		coalesce((select sum(t.amount) from transactions t where t.payer_type = 'orders' and t.payer_id = o.id and t.deleted_at is null), 0)
+		round(coalesce((select sum(oi.price * oi.width * oi.height) from order_items oi where oi.order_id = o.id), 0)::numeric),
+		round(coalesce((select sum(t.amount) from transactions t where t.payer_type = 'orders' and t.payer_id = o.id and t.deleted_at is null), 0)::numeric)
 	from orders o where o.id = $1`
 
 func scanSummary(row *sql.Row) (models.PaymentSummary, error) {
@@ -77,7 +79,7 @@ func (stg *orderRepo) AddPayment(userID int64, entity models.AddOrderPaymentRequ
 	if err != nil {
 		return summary, err
 	}
-	if msg := models.PaymentAmountError(entity.Amount, summary.Remaining); msg != "" {
+	if msg := models.PaymentAmountErrorFor(entity.Amount, summary); msg != "" {
 		return summary, models.PaymentAmountErr{Msg: msg}
 	}
 
