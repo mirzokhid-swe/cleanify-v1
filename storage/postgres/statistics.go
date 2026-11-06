@@ -74,7 +74,7 @@ func (stg *statisticsRepo) GetServicePaymentStatistics(entity models.GetServiceP
 
 	params["company_id"] = entity.CompanyID
 
-	filter := " where (t.company_id = :company_id)"
+	filter := " where (t.company_id = :company_id) and t.deleted_at is null"
 
 	if entity.DateFrom != "" {
 		params["date_from"] = entity.DateFrom
