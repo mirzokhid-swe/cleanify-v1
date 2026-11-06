@@ -13,7 +13,12 @@ type OrderI interface {
 	GetByPrimaryKey(ID int) (models.OrderShowResponse, error)
 	Delete(entity models.DeleteOrderRequest) error
 	SetOrderPrice(entity models.SetOrderPriceRequest) error
-	AddPayment(userID int64, entity models.AddOrderPaymentRequest) error
+	// Payments: every change runs inside one transaction and ends with
+	// order_payment_status_recalc; the returned summary is the new state.
+	GetPaymentSummary(orderID int) (models.PaymentSummary, error)
+	AddPayment(userID int64, entity models.AddOrderPaymentRequest) (models.PaymentSummary, error)
+	DeleteTransaction(userID int64, transactionID int, companyID string) (models.PaymentSummary, error)
+	RecalcPaymentStatus(orderID int) error
 	AddComment(entity models.CreateOrderComment) error
 	GetByUuid(uuid string) (models.OrderReceipt, error)
 }

@@ -150,7 +150,7 @@ type UpdateOrderRequest struct {
 type AddOrderPaymentRequest struct {
 	CompanyID   string      `json:"company_id" binding:"required"`
 	OrderID     int         `json:"order_id" binding:"required"`
-	Amount      float64     `json:"amount" binding:"required"`
+	Amount      float64     `json:"amount" binding:"required,gt=0"`
 	PaymentType PaymentType `json:"payment_type" binding:"required,oneof=1 2"`
 	Description string      `json:"description"`
 }

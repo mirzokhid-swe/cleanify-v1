@@ -5,7 +5,9 @@ import (
 	"bw-erp/models"
 	"bw-erp/pkg/utils"
 	"bytes"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"log"
 	newHttp "net/http"
 	"os"
@@ -194,32 +196,57 @@ func (h *Handler) SetOrderPrice(c *gin.Context) {
 	h.handleResponse(c, http.OK, "OK!")
 }
 
+// AddOrderPayment records a payment and returns {payment_status, total, paid, remaining}.
+// amount > remaining or ≤ 0 → 400 with the reason; a duplicate within 1 minute → 200, not stored.
 func (h *Handler) AddOrderPayment(c *gin.Context) {
 	var body models.AddOrderPaymentRequest
 	if err := c.ShouldBindJSON(&body); err != nil {
 		h.handleResponse(c, http.BadRequest, err.Error())
 		return
 	}
+	body.CompanyID = verifiedCompanyID(c, body.CompanyID)
 
-	jwtData, err := utils.ExtractTokenID(c)
+	summary, err := h.Stg.Order().AddPayment(currentUserID(c), body)
+	if errors.Is(err, sql.ErrNoRows) {
+		h.handleResponse(c, http.NOT_FOUND, "Order not found!")
+		return
+	}
+	if errors.Is(err, models.ErrPaymentAmount) {
+		h.handleResponse(c, http.BadRequest, err.Error())
+		return
+	}
 	if err != nil {
 		h.handleResponse(c, http.BadRequest, err.Error())
 		return
 	}
 
-	user, err := h.Stg.User().GetById(jwtData.UserID)
+	h.handleResponse(c, http.OK, summary)
+}
+
+// DeleteOrderTransaction soft-deletes one order payment of the verified company.
+func (h *Handler) DeleteOrderTransaction(c *gin.Context) {
+	transactionID, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		h.handleResponse(c, http.InvalidArgument, "id is not a number")
+		return
+	}
+	var body models.DeleteTransactionRequest
+	if err := c.ShouldBindQuery(&body); err != nil {
+		h.handleResponse(c, http.BadRequest, err.Error())
+		return
+	}
+
+	summary, err := h.Stg.Order().DeleteTransaction(currentUserID(c), transactionID, verifiedCompanyID(c, body.CompanyID))
+	if errors.Is(err, sql.ErrNoRows) {
+		h.handleResponse(c, http.NOT_FOUND, "Transaction not found!")
+		return
+	}
 	if err != nil {
 		h.handleResponse(c, http.BadRequest, err.Error())
 		return
 	}
 
-	err = h.Stg.Order().AddPayment(user.ID, body)
-	if err != nil {
-		h.handleResponse(c, http.BadRequest, err.Error())
-		return
-	}
-
-	h.handleResponse(c, http.OK, "OK!")
+	h.handleResponse(c, http.OK, summary)
 }
 
 func (h *Handler) GetTransactionByOrder(c *gin.Context) {
