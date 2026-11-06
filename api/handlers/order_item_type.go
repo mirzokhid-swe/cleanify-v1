@@ -75,7 +75,7 @@ func (h *Handler) GetOrderItemTypeByID(c *gin.Context) {
 		return
 	}
 
-	data, err := h.Stg.OrderItemType().GetById(ID)
+	data, err := h.Stg.OrderItemType().GetById(ID, c.Query("company_id"))
 	if err != nil {
 		h.handleResponse(c, http.BadRequest, err.Error())
 		return

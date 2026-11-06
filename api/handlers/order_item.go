@@ -22,7 +22,7 @@ func (h *Handler) CreateOrderItemModel(c *gin.Context) {
 		return
 	}
 
-	orderItemType, err := h.Stg.OrderItemType().GetById(body.OrderItemTypeID)
+	orderItemType, err := h.Stg.OrderItemType().GetById(body.OrderItemTypeID, "")
 	if err != nil {
 		h.handleResponse(c, http.BadRequest, err.Error())
 		return
@@ -64,7 +64,7 @@ func (h *Handler) UpdateOrderItemModel(c *gin.Context) {
 		return
 	}
 
-	orderItemType, err := h.Stg.OrderItemType().GetById(body.OrderItemTypeID)
+	orderItemType, err := h.Stg.OrderItemType().GetById(body.OrderItemTypeID, "")
 	if err != nil {
 		h.handleResponse(c, http.BadRequest, err.Error())
 		return

@@ -16,60 +16,53 @@ func NewOrderItemTypeRepo(db *sqlx.DB) repo.OrderItemTypeI {
 	return &orderItemTypeRepo{db: db}
 }
 
-func (stg *orderItemTypeRepo) Create(id string, entity models.OrderItemTypeModel) error {
-	// [TODO: get by primary key metodini yozish kerak]
-	// _, err := stg.Company().GetById(entity.CopmanyID)
-	// if err != nil {
-	// 	return errors.New("selected company not found")
-	// }
+const orderItemTypeSelect = `select
+		o.id,
+		o.name,
+		o.price,
+		o.unit,
+		o.is_countable,
+		c.name,
+		c.id
+	from order_item_types o
+	inner join companies c on c.id = o.company_id`
 
+func (stg *orderItemTypeRepo) Create(id string, entity models.OrderItemTypeModel) error {
 	_, err := stg.db.Exec(`INSERT INTO order_item_types(
 		id,
 		name,
 		company_id,
 		price,
+		unit,
 		is_countable
-	) VALUES (
-		$1,
-		$2,
-		$3,
-		$4,
-		$5
-	)`,
+	) VALUES ($1, $2, $3, $4, $5, $6)`,
 		id,
 		entity.Name,
 		entity.CompanyID,
 		entity.Price,
-		entity.IsCountable,
+		entity.Unit,
+		models.UnitIsCountable(entity.Unit),
 	)
-
-	if err != nil {
-		return err
-	}
-	return nil
+	return err
 }
 
 func (stg *orderItemTypeRepo) GetByCompany(CompanyID string) ([]models.OrderItemByCompany, error) {
-	rows, err := stg.db.Query(`select  
-					o.id,
-					o.name, 
-					o.price,
-					o.is_countable,
-					c.name,
-					c.id
-					from order_item_types o inner join companies c on c.id = o.company_id 
-					where o.company_id = $1 order by o.price`, CompanyID)
+	rows, err := stg.db.Query(orderItemTypeSelect+`
+		where o.company_id = $1
+		order by `+models.OrderItemUnitOrderSQL+`, o.price`, CompanyID)
 	if err != nil {
 		return nil, err
 	}
+	defer rows.Close()
 
-	var orderItemTypes []models.OrderItemByCompany
+	orderItemTypes := []models.OrderItemByCompany{}
 	for rows.Next() {
 		var orderItemType models.OrderItemByCompany
 		err = rows.Scan(
 			&orderItemType.ID,
 			&orderItemType.Name,
 			&orderItemType.Price,
+			&orderItemType.Unit,
 			&orderItemType.IsCountable,
 			&orderItemType.CopmanyName,
 			&orderItemType.CopmanyID,
@@ -80,15 +73,22 @@ func (stg *orderItemTypeRepo) GetByCompany(CompanyID string) ([]models.OrderItem
 		orderItemTypes = append(orderItemTypes, orderItemType)
 	}
 
-	return orderItemTypes, nil
+	return orderItemTypes, rows.Err()
 }
 
-func (stg *orderItemTypeRepo) GetById(orderItemTypeId string) (models.OrderItemByCompany, error) {
+func (stg *orderItemTypeRepo) GetById(orderItemTypeId string, companyID string) (models.OrderItemByCompany, error) {
 	var orderItemType models.OrderItemByCompany
-	err := stg.db.QueryRow(`select o.id, o.name, o.price, o.is_countable, c.name, c.id  from order_item_types o inner join companies c on c.id = o.company_id where o.id = $1`, orderItemTypeId).Scan(
+	query := orderItemTypeSelect + ` where o.id = $1`
+	args := []interface{}{orderItemTypeId}
+	if companyID != "" {
+		query += ` and o.company_id = $2`
+		args = append(args, companyID)
+	}
+	err := stg.db.QueryRow(query, args...).Scan(
 		&orderItemType.ID,
 		&orderItemType.Name,
 		&orderItemType.Price,
+		&orderItemType.Unit,
 		&orderItemType.IsCountable,
 		&orderItemType.CopmanyName,
 		&orderItemType.CopmanyID,
@@ -101,18 +101,16 @@ func (stg *orderItemTypeRepo) GetById(orderItemTypeId string) (models.OrderItemB
 }
 
 func (stg *orderItemTypeRepo) Update(entity models.EditOrderItemTypeRequest) (rowsAffected int64, err error) {
-
-	query := `UPDATE 
-					"order_item_types" 
-						SET price = :price, is_countable = :is_countable, name = :name, updated_at = now()
-					WHERE
-		  				id = :id and company_id = :company_id`
+	query := `UPDATE "order_item_types"
+		SET price = :price, unit = :unit, is_countable = :is_countable, name = :name, updated_at = now()
+		WHERE id = :id and company_id = :company_id`
 
 	params := map[string]interface{}{
 		"id":           entity.ID,
 		"price":        entity.Price,
 		"company_id":   entity.CopmanyID,
-		"is_countable": entity.IsCountable,
+		"unit":         entity.Unit,
+		"is_countable": models.UnitIsCountable(entity.Unit),
 		"name":         entity.Name,
 	}
 
@@ -122,10 +120,13 @@ func (stg *orderItemTypeRepo) Update(entity models.EditOrderItemTypeRequest) (ro
 		return 0, err
 	}
 
-	rowsAffected, err = result.RowsAffected()
+	return result.RowsAffected()
+}
+
+func (stg *orderItemTypeRepo) Delete(id string, companyID string) (rowsAffected int64, err error) {
+	result, err := stg.db.Exec(`delete from order_item_types where id = $1 and company_id = $2`, id, companyID)
 	if err != nil {
 		return 0, err
 	}
-
-	return rowsAffected, nil
+	return result.RowsAffected()
 }
