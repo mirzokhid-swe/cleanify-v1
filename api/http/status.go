@@ -53,6 +53,12 @@ var (
 		Status:      "FORBIDDEN",
 		Description: "...",
 	}
+	// PermissionDenied is a 403 the front must not confuse with an expired token.
+	PermissionDenied = Status{
+		Code:        403,
+		Status:      "PERMISSION_DENIED",
+		Description: "Permission denied",
+	}
 	TooManyRequests = Status{
 		Code:        429,
 		Status:      "TOO_MANY_REQUESTS",

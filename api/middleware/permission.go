@@ -14,11 +14,16 @@ import (
 
 // CompanyIDFromRequest returns the company_id of the request: the query
 // parameter when present, otherwise the "company_id" field of the JSON body.
-// The body is read and restored so the handler can bind it again.
 func CompanyIDFromRequest(c *gin.Context) string {
 	if id := c.Query("company_id"); id != "" {
 		return id
 	}
+	return bodyCompanyID(c)
+}
+
+// bodyCompanyID reads "company_id" from the JSON body and restores the body
+// so the handler can bind it again.
+func bodyCompanyID(c *gin.Context) string {
 	if c.Request == nil || c.Request.Body == nil {
 		return ""
 	}
@@ -55,8 +60,8 @@ func hasPermission(can string, slug string) bool {
 }
 
 func forbid(c *gin.Context, description string) {
-	c.AbortWithStatusJSON(http.Forbidden.Code, http.Response{
-		Status:      http.Forbidden.Status,
+	c.AbortWithStatusJSON(http.PermissionDenied.Code, http.Response{
+		Status:      http.PermissionDenied.Status,
 		Description: description,
 		Data:        nil,
 	})
@@ -64,8 +69,9 @@ func forbid(c *gin.Context, description string) {
 
 // RequirePermission allows the request only when the user set by
 // UserActiveMiddleware has the permission slug in the company named by the
-// request (query or JSON body company_id). On success the company id is
-// stored in the context under "company_id".
+// request (query or JSON body company_id; when both are sent they must be
+// equal). On success the verified company id is stored in the context under
+// "company_id" and handlers must use it instead of re-reading the request.
 func RequirePermission(slug string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		value, ok := c.Get("user")
@@ -78,7 +84,15 @@ func RequirePermission(slug string) gin.HandlerFunc {
 			forbid(c, "Permission denied")
 			return
 		}
-		companyID := CompanyIDFromRequest(c)
+		queryID, bodyID := c.Query("company_id"), bodyCompanyID(c)
+		if queryID != "" && bodyID != "" && queryID != bodyID {
+			forbid(c, "company_id mismatch")
+			return
+		}
+		companyID := queryID
+		if companyID == "" {
+			companyID = bodyID
+		}
 		if companyID == "" {
 			forbid(c, "company_id is required")
 			return

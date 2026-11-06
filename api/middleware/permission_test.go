@@ -95,3 +95,25 @@ func TestRequirePermissionAllows(t *testing.T) {
 		t.Fatalf("company_id in context: %q", got)
 	}
 }
+
+func TestRequirePermissionDeniesQueryBodyMismatch(t *testing.T) {
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest("POST", "/x?company_id=c-1", strings.NewReader(`{"company_id":"c-2","name":"Gilam"}`))
+	c.Set("user", models.User{UserPermissionByCompany: []models.UserPermissionByCompany{{CompanyID: "c-1", Can: "create_order_item_type"}}})
+	RequirePermission("create_order_item_type")(c)
+	if !c.IsAborted() || w.Code != 403 {
+		t.Fatalf("aborted=%v code=%d", c.IsAborted(), w.Code)
+	}
+}
+
+func TestRequirePermissionResponseIsDistinguishableFromAuthFailure(t *testing.T) {
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest("GET", "/x?company_id=c-1", nil)
+	c.Set("user", models.User{UserPermissionByCompany: []models.UserPermissionByCompany{{CompanyID: "c-1", Can: "get_orders_list"}}})
+	RequirePermission("get_order_item_type")(c)
+	if !strings.Contains(w.Body.String(), `"status":"PERMISSION_DENIED"`) {
+		t.Fatalf("body %s", w.Body.String())
+	}
+}

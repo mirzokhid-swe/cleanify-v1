@@ -12,6 +12,15 @@ import (
 	"github.com/google/uuid"
 )
 
+// verifiedCompanyID returns the company id RequirePermission verified for this
+// request; fallback is used only when the route has no permission middleware.
+func verifiedCompanyID(c *gin.Context, fallback string) string {
+	if id := c.GetString("company_id"); id != "" {
+		return id
+	}
+	return fallback
+}
+
 func (h *Handler) CreateOrderItemTypeModel(c *gin.Context) {
 	var body models.OrderItemTypeModel
 
@@ -19,6 +28,7 @@ func (h *Handler) CreateOrderItemTypeModel(c *gin.Context) {
 		h.handleResponse(c, http.BadRequest, err.Error())
 		return
 	}
+	body.CompanyID = verifiedCompanyID(c, body.CompanyID)
 
 	if !utils.IsValidUUID(body.CompanyID) {
 		h.handleResponse(c, http.InvalidArgument, "company id is an invalid uuid")
@@ -65,7 +75,7 @@ func (h *Handler) GetOrderItemTypeByID(c *gin.Context) {
 		return
 	}
 
-	data, err := h.Stg.OrderItemType().GetById(ID, c.Query("company_id"))
+	data, err := h.Stg.OrderItemType().GetById(ID, verifiedCompanyID(c, c.Query("company_id")))
 	if errors.Is(err, sql.ErrNoRows) {
 		h.handleResponse(c, http.NOT_FOUND, "Order item type not found!")
 		return
@@ -84,6 +94,7 @@ func (h *Handler) UpdateOrderItemType(c *gin.Context) {
 		h.handleResponse(c, http.BadRequest, err.Error())
 		return
 	}
+	body.CopmanyID = verifiedCompanyID(c, body.CopmanyID)
 
 	rowsAffected, err := h.Stg.OrderItemType().Update(body)
 	if err != nil {
@@ -112,7 +123,7 @@ func (h *Handler) DeleteOrderItemType(c *gin.Context) {
 		return
 	}
 
-	rowsAffected, err := h.Stg.OrderItemType().Delete(ID, body.CompanyID)
+	rowsAffected, err := h.Stg.OrderItemType().Delete(ID, verifiedCompanyID(c, body.CompanyID))
 	if err != nil {
 		h.handleResponse(c, http.BadRequest, err.Error())
 		return

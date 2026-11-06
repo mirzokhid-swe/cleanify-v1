@@ -105,12 +105,7 @@ func SetUpRouter(h handlers.Handler, cfg config.Config) (r *gin.Engine) {
 	}
 
 	{
-		orderItemTypeRouter := baseRouter.Group("order-item-type")
-		orderItemTypeRouter.POST("", middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg), middleware.RequirePermission("create_order_item_type"), h.CreateOrderItemTypeModel)
-		orderItemTypeRouter.GET("", middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg), middleware.RequirePermission("get_order_item_type"), h.GetOrderItemTypesByCompany)
-		orderItemTypeRouter.PUT("", middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg), middleware.RequirePermission("edit_order_item_type"), h.UpdateOrderItemType)
-		orderItemTypeRouter.GET("get-by-primary-key/:id", middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg), middleware.RequirePermission("get_order_item_type"), h.GetOrderItemTypeByID)
-		orderItemTypeRouter.DELETE("/:id", middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg), middleware.RequirePermission("delete_order_item_type"), h.DeleteOrderItemType)
+		orderItemTypeRoutes(baseRouter.Group("order-item-type"), &h, middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg))
 	}
 
 	{
@@ -163,4 +158,18 @@ func customCORSMiddleware() gin.HandlerFunc {
 
 		c.Next()
 	}
+}
+
+// orderItemTypeRoutes registers the order item type routes. auth runs before
+// RequirePermission on every route and must leave a models.User in the context
+// under "user" (AuthMiddleware + UserActiveMiddleware in production).
+func orderItemTypeRoutes(g *gin.RouterGroup, h *handlers.Handler, auth ...gin.HandlerFunc) {
+	with := func(slug string, handler gin.HandlerFunc) []gin.HandlerFunc {
+		return append(append([]gin.HandlerFunc{}, auth...), middleware.RequirePermission(slug), handler)
+	}
+	g.POST("", with("create_order_item_type", h.CreateOrderItemTypeModel)...)
+	g.GET("", with("get_order_item_type", h.GetOrderItemTypesByCompany)...)
+	g.PUT("", with("edit_order_item_type", h.UpdateOrderItemType)...)
+	g.GET("get-by-primary-key/:id", with("get_order_item_type", h.GetOrderItemTypeByID)...)
+	g.DELETE("/:id", with("delete_order_item_type", h.DeleteOrderItemType)...)
 }
