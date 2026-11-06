@@ -16,6 +16,18 @@ func NewOrderItemRepo(db *sqlx.DB) repo.OrderItemI {
 	return &orderItemRepo{db: db}
 }
 
+// recalcPaymentStatus: an item change moves the total, so the payment status is
+// recomputed (a manual status is kept — the function returns without changes).
+func (stg orderItemRepo) recalcPaymentStatus(orderID int) {
+	stg.db.Exec(`select order_payment_status_recalc($1)`, orderID)
+}
+
+func (stg orderItemRepo) orderIDOfItem(itemID int) int {
+	var orderID int
+	stg.db.QueryRow(`select order_id from order_items where id = $1`, itemID).Scan(&orderID)
+	return orderID
+}
+
 func (stg orderItemRepo) Create(userID int64, entity models.CreateOrderItemModel) error {
 	var id int
 
@@ -80,6 +92,7 @@ func (stg orderItemRepo) Create(userID int64, entity models.CreateOrderItemModel
 		entity.OrderItemStatus,
 	).Scan()
 
+	stg.recalcPaymentStatus(entity.OrderID)
 	return nil
 }
 
@@ -130,15 +143,17 @@ func (stg orderItemRepo) Update(entity models.UpdateOrderItemRequest) (rowsAffec
 		return 0, err
 	}
 
+	stg.recalcPaymentStatus(stg.orderIDOfItem(entity.ID))
 	return rowsAffected, nil
 }
 
 func (stg *orderItemRepo) DeleteByID(ID int) error {
+	orderID := stg.orderIDOfItem(ID)
 	_, err := stg.db.Exec(`delete from order_items where id = $1`, ID)
 	if err != nil {
 		return err
 	}
-
+	stg.recalcPaymentStatus(orderID)
 	return nil
 }
 

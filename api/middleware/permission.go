@@ -75,6 +75,21 @@ func locked(c *gin.Context) {
 	})
 }
 
+// UserCan reports whether the user in the context has slug in companyID.
+// For handlers that learn the company from the resource, not the request.
+func UserCan(c *gin.Context, companyID string, slug string) bool {
+	value, ok := c.Get("user")
+	if !ok {
+		return false
+	}
+	user, ok := value.(models.User)
+	if !ok {
+		return false
+	}
+	uc, found := companyPermissions(user, companyID)
+	return found && !uc.IsBlocked && hasPermission(uc.Can, slug)
+}
+
 // RequirePermission allows the request only when the user set by
 // UserActiveMiddleware has the permission slug in the company named by the
 // request (query or JSON body company_id; when both are sent they must be

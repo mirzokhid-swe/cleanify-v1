@@ -3,6 +3,9 @@ package models
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"regexp"
 	"time"
 )
 
@@ -81,10 +84,13 @@ type CreateOrderComment struct {
 }
 
 type OrderTransaction struct {
-	ReceiverFullname string    `json:"receiver_fullname"`
-	PaymentType      uint8     `json:"payment_type"`
-	Amount           float64   `json:"amount"`
-	CreatedAt        time.Time `json:"created_at"`
+	ID                int        `json:"id"`
+	ReceiverFullname  string     `json:"receiver_fullname"`
+	PaymentType       uint8      `json:"payment_type"`
+	Amount            float64    `json:"amount"`
+	CreatedAt         time.Time  `json:"created_at"`
+	DeletedAt         *time.Time `json:"deleted_at"`
+	DeletedByFullname *string    `json:"deleted_by_fullname"`
 }
 
 type Order struct {
@@ -109,6 +115,8 @@ type Order struct {
 	Price                 float64               `json:"price,omitempty"`
 	StatusChangeHistory   []StatusChangeHistory `json:"status_change_history,omitempty"`
 	PaymentStatus         int16                 `json:"payment_status,omitempty"`
+	Paid                  float64               `json:"paid"`
+	Slots                 []string              `json:"slots"`
 	ServicePrice          float64               `json:"service_price,omitempty"`
 	DiscountPercentage    float64               `json:"discount_percentage,omitempty"`
 	DiscountPrice         float64               `json:"discounted_price,omitempty"`
@@ -130,11 +138,15 @@ type OrderSendLocationRequest struct {
 	OrderID int `form:"order_id" binding:"required"`
 }
 
+// UpdateOrderRequest: fields left out of the JSON are not changed.
+// CourierID: nil → unchanged, 0 → courier removed (NULL), > 0 → set, < 0 → 400.
+// Slots: nil → unchanged, [] → cleared. PaymentStatus != 0 → manual value (change_payment_status).
 type UpdateOrderRequest struct {
 	ID              int           `json:"id" binding:"required"`
 	CompanyID       string        `json:"company_id"`
 	Address         string        `json:"address"`
-	CourierID       int64         `json:"courier_id"`
+	CourierID       *int64        `json:"courier_id"`
+	Slots           *[]string     `json:"slots"`
 	Slug            string        `json:"slug"`
 	Status          int8          `json:"status"`
 	PaymentStatus   PaymentStatus `json:"payment_status"`
@@ -145,6 +157,26 @@ type UpdateOrderRequest struct {
 	Latitute        float64       `json:"latitute"`
 	Longitude       float64       `json:"longitude"`
 	DiscountedPrice float64       `json:"discounted_price"`
+}
+
+var slotRe = regexp.MustCompile(`^[0-9]{1,10}$`)
+
+// ValidateSlots: up to 20 storage slot numbers, each 1–10 digits, no repeats.
+func ValidateSlots(slots []string) error {
+	if len(slots) > 20 {
+		return errors.New("ko'pi bilan 20 ta joy")
+	}
+	seen := map[string]bool{}
+	for _, s := range slots {
+		if !slotRe.MatchString(s) {
+			return fmt.Errorf("joy raqami noto'g'ri: %q", s)
+		}
+		if seen[s] {
+			return fmt.Errorf("joy takrorlangan: %s", s)
+		}
+		seen[s] = true
+	}
+	return nil
 }
 
 type AddOrderPaymentRequest struct {

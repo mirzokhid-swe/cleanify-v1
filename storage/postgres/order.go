@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/jmoiron/sqlx"
+	"github.com/lib/pq"
 )
 
 type orderRepo struct {
@@ -285,7 +286,9 @@ func (stg *orderRepo) GetDetailedByPrimaryKey(ID int) (models.OrderShowResponse,
 									coalesce(round(sum(oi.width * oi.height * oi.price)::numeric, 2), 0) as price,
 									COALESCE(o.courier_id, null) as courier_id,
 									o.created_at,
-									o.updated_at 
+									o.updated_at,
+									coalesce((select sum(t.amount) from transactions t where t.payer_type = 'orders' and t.payer_id = o.id and t.deleted_at is null), 0) as paid,
+									o.slots
 								from orders o
 								left join clients c on o.client_id = c.id 
 								left join order_items oi on oi.order_id = o.id
@@ -309,7 +312,8 @@ func (stg *orderRepo) GetDetailedByPrimaryKey(ID int) (models.OrderShowResponse,
 									o.discount_percentage,
 									o.discounted_price,
 									o.created_at,
-									o.updated_at `, ID).Scan(
+									o.updated_at,
+									o.slots `, ID).Scan(
 		&order.ID,
 		&order.CompanyID,
 		&order.PhoneNumber,
@@ -332,6 +336,8 @@ func (stg *orderRepo) GetDetailedByPrimaryKey(ID int) (models.OrderShowResponse,
 		&order.CourierID,
 		&order.CreatedAt,
 		&order.UpdatedAt,
+		&order.Paid,
+		pq.Array(&order.Slots),
 	)
 	if err != nil {
 		return order, err
@@ -379,9 +385,12 @@ func (stg *orderRepo) GetDetailedByPrimaryKey(ID int) (models.OrderShowResponse,
 		order.StatusChangeHistory = append(order.StatusChangeHistory, history)
 	}
 
-	transactions, err := stg.db.Query(`select u.fullname, t.payment_type, t.amount, t.created_at from transactions t
+	transactions, err := stg.db.Query(`select t.id, u.fullname, t.payment_type, t.amount, t.created_at, t.deleted_at, du.fullname
+									from transactions t
 									inner join users u on t.receiver_type = 'users' and t.receiver_id = u.id
-									where payer_type = 'orders' and payer_id = $1`, order.ID)
+									left join users du on du.id = t.deleted_by
+									where t.payer_type = 'orders' and t.payer_id = $1
+									order by t.created_at`, order.ID)
 	if err != nil {
 		return order, err
 	}
@@ -389,7 +398,7 @@ func (stg *orderRepo) GetDetailedByPrimaryKey(ID int) (models.OrderShowResponse,
 
 	for transactions.Next() {
 		var transaction models.OrderTransaction
-		if err := transactions.Scan(&transaction.ReceiverFullname, &transaction.PaymentType, &transaction.Amount, &transaction.CreatedAt); err != nil {
+		if err := transactions.Scan(&transaction.ID, &transaction.ReceiverFullname, &transaction.PaymentType, &transaction.Amount, &transaction.CreatedAt, &transaction.DeletedAt, &transaction.DeletedByFullname); err != nil {
 			return order, err
 		}
 		order.OrderTransaction = append(order.OrderTransaction, transaction)
@@ -559,13 +568,20 @@ func (stg *orderRepo) Update(userID int64, entity *models.UpdateOrderRequest) (r
 	}
 
 	if entity.PaymentStatus != 0 {
-		query += `payment_status = :payment_status,`
+		// Set by hand: the automatic recalc leaves it alone until money changes.
+		query += `payment_status = :payment_status, payment_status_manual = true,`
 	}
 
-	if entity.CourierID != 0 {
-		query += `courier_id = :courier_id,`
-	} else {
-		query += `courier_id = NULL,`
+	if entity.CourierID != nil {
+		if *entity.CourierID == 0 {
+			query += `courier_id = NULL,`
+		} else {
+			query += `courier_id = :courier_id,`
+		}
+	}
+
+	if entity.Slots != nil {
+		query += `slots = :slots,`
 	}
 
 	query += `updated_at = now()
@@ -588,6 +604,14 @@ func (stg *orderRepo) Update(userID int64, entity *models.UpdateOrderRequest) (r
 		}
 	}
 
+	var courierID int64
+	if entity.CourierID != nil {
+		courierID = *entity.CourierID
+	}
+	var slots []string
+	if entity.Slots != nil {
+		slots = *entity.Slots
+	}
 	params := map[string]interface{}{
 		"id":               entity.ID,
 		"status":           entity.Status,
@@ -599,7 +623,8 @@ func (stg *orderRepo) Update(userID int64, entity *models.UpdateOrderRequest) (r
 		"latitute":         entity.Latitute,
 		"longitude":        entity.Longitude,
 		"payment_status":   entity.PaymentStatus,
-		"courier_id":       entity.CourierID,
+		"courier_id":       courierID,
+		"slots":            pq.Array(slots),
 		"discounted_price": entity.DiscountedPrice,
 	}
 

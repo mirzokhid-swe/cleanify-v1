@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bw-erp/api/http"
+	"bw-erp/api/middleware"
 	"bw-erp/models"
 	"bw-erp/pkg/utils"
 	"bytes"
@@ -279,6 +280,21 @@ func (h *Handler) UpdateOrderModel(c *gin.Context) {
 		return
 	}
 
+	if body.PaymentStatus != 0 && !middleware.UserCan(c, order.CompanyID, "change_payment_status") {
+		h.handleResponse(c, http.PermissionDenied, "Permission denied")
+		return
+	}
+	if body.CourierID != nil && *body.CourierID < 0 {
+		h.handleResponse(c, http.InvalidArgument, "courier_id is invalid")
+		return
+	}
+	if body.Slots != nil {
+		if err := models.ValidateSlots(*body.Slots); err != nil {
+			h.handleResponse(c, http.InvalidArgument, err.Error())
+			return
+		}
+	}
+
 	oldOrderStatus := order.Status
 	oldCourierID := order.CourierID
 
@@ -368,10 +384,12 @@ func (h *Handler) UpdateOrderModel(c *gin.Context) {
 	}
 
 	isCourierChanged := false
-	if oldCourierID == nil {
-		isCourierChanged = body.CourierID != 0
-	} else {
-		isCourierChanged = body.CourierID != *oldCourierID
+	if body.CourierID != nil {
+		if oldCourierID == nil {
+			isCourierChanged = *body.CourierID != 0
+		} else {
+			isCourierChanged = *body.CourierID != *oldCourierID
+		}
 	}
 
 	if isCourierChanged {
