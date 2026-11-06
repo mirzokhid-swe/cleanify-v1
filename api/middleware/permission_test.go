@@ -117,3 +117,17 @@ func TestRequirePermissionResponseIsDistinguishableFromAuthFailure(t *testing.T)
 		t.Fatalf("body %s", w.Body.String())
 	}
 }
+
+func TestRequirePermissionBlockedCompanyIs423(t *testing.T) {
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest("GET", "/x?company_id=c-1", nil)
+	c.Set("user", models.User{UserPermissionByCompany: []models.UserPermissionByCompany{{CompanyID: "c-1", Can: "get_orders_list", IsBlocked: true}}})
+	RequirePermission("get_orders_list")(c)
+	if !c.IsAborted() || w.Code != 423 {
+		t.Fatalf("aborted=%v code=%d", c.IsAborted(), w.Code)
+	}
+	if !strings.Contains(w.Body.String(), `"status":"LOCKED"`) {
+		t.Fatalf("body %s", w.Body.String())
+	}
+}

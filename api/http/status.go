@@ -59,6 +59,12 @@ var (
 		Status:      "PERMISSION_DENIED",
 		Description: "Permission denied",
 	}
+	// Locked: the company named by the request (or every company of the user) is blocked.
+	Locked = Status{
+		Code:        423,
+		Status:      "LOCKED",
+		Description: "company_blocked",
+	}
 	TooManyRequests = Status{
 		Code:        429,
 		Status:      "TOO_MANY_REQUESTS",

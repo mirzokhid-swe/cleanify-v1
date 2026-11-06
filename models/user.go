@@ -28,6 +28,7 @@ type User struct {
 	Phone                   string                    `json:"phone"`
 	CompanyID               *string                   `json:"company_id"`
 	IsActive                bool                      `json:"is_active"`
+	IsSuperAdmin            bool                      `json:"is_super_admin"`
 	UserPermissionByCompany []UserPermissionByCompany `json:"user_permissions_by_company"`
 }
 
@@ -41,11 +42,13 @@ type GetCouriesListRequest struct {
 }
 
 type UserPermissionByCompany struct {
-	CompanyID     string `json:"company_id"`
-	CompanyName   string `json:"company_name"`
-	PermissionIDs []int  `json:"permission_ids"`
-	Can           string `json:"can"`
-	IsCourier     bool   `json:"is_courier"`
+	CompanyID     string          `json:"company_id"`
+	CompanyName   string          `json:"company_name"`
+	PermissionIDs []int           `json:"permission_ids"`
+	Can           string          `json:"can"`
+	IsCourier     bool            `json:"is_courier"`
+	IsBlocked     bool            `json:"is_blocked"`
+	Settings      json.RawMessage `json:"settings"`
 }
 
 type UpdateUserRequest struct {

@@ -67,6 +67,14 @@ func forbid(c *gin.Context, description string) {
 	})
 }
 
+func locked(c *gin.Context) {
+	c.AbortWithStatusJSON(http.Locked.Code, http.Response{
+		Status:      http.Locked.Status,
+		Description: http.Locked.Description,
+		Data:        nil,
+	})
+}
+
 // RequirePermission allows the request only when the user set by
 // UserActiveMiddleware has the permission slug in the company named by the
 // request (query or JSON body company_id; when both are sent they must be
@@ -98,7 +106,15 @@ func RequirePermission(slug string) gin.HandlerFunc {
 			return
 		}
 		uc, found := companyPermissions(user, companyID)
-		if !found || !hasPermission(uc.Can, slug) {
+		if !found {
+			forbid(c, "Permission denied")
+			return
+		}
+		if uc.IsBlocked {
+			locked(c)
+			return
+		}
+		if !hasPermission(uc.Can, slug) {
 			forbid(c, "Permission denied")
 			return
 		}
