@@ -106,10 +106,11 @@ func SetUpRouter(h handlers.Handler, cfg config.Config) (r *gin.Engine) {
 
 	{
 		orderItemTypeRouter := baseRouter.Group("order-item-type")
-		orderItemTypeRouter.Use(middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg)).POST("", h.CreateOrderItemTypeModel)
-		orderItemTypeRouter.Use(middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg)).GET("", h.GetOrderItemTypesByCompany) //
-		orderItemTypeRouter.Use(middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg)).PUT("", h.UpdateOrderItemType)
-		orderItemTypeRouter.Use(middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg)).GET("get-by-primary-key/:id", h.GetOrderItemTypeByID)
+		orderItemTypeRouter.POST("", middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg), middleware.RequirePermission("create_order_item_type"), h.CreateOrderItemTypeModel)
+		orderItemTypeRouter.GET("", middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg), middleware.RequirePermission("get_order_item_type"), h.GetOrderItemTypesByCompany)
+		orderItemTypeRouter.PUT("", middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg), middleware.RequirePermission("edit_order_item_type"), h.UpdateOrderItemType)
+		orderItemTypeRouter.GET("get-by-primary-key/:id", middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg), middleware.RequirePermission("get_order_item_type"), h.GetOrderItemTypeByID)
+		orderItemTypeRouter.DELETE("/:id", middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg), middleware.RequirePermission("delete_order_item_type"), h.DeleteOrderItemType)
 	}
 
 	{

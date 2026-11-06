@@ -1,6 +1,9 @@
 package handlers
 
 import (
+	"database/sql"
+	"errors"
+
 	"bw-erp/api/http"
 	"bw-erp/models"
 	"bw-erp/pkg/utils"
@@ -40,24 +43,11 @@ func (h *Handler) CreateOrderItemTypeModel(c *gin.Context) {
 }
 
 func (h *Handler) GetOrderItemTypesByCompany(c *gin.Context) {
-	var body models.GetOrderStatusListRequest
+	var body models.GetOrderItemTypeByCompany
 	if err := c.ShouldBindQuery(&body); err != nil {
 		h.handleResponse(c, http.BadRequest, err.Error())
 		return
 	}
-
-	// token, err := utils.ExtractTokenID(c)
-
-	// if err != nil {
-	// 	h.handleResponse(c, http.BadRequest, err.Error())
-	// 	return
-	// }
-
-	// user, err := h.Stg.User().GetById(token.UserID)
-	// if err != nil {
-	// 	h.handleResponse(c, http.BadRequest, err.Error())
-	// 	return
-	// }
 
 	data, err := h.Stg.OrderItemType().GetByCompany(body.CompanyID)
 	if err != nil {
@@ -76,6 +66,10 @@ func (h *Handler) GetOrderItemTypeByID(c *gin.Context) {
 	}
 
 	data, err := h.Stg.OrderItemType().GetById(ID, c.Query("company_id"))
+	if errors.Is(err, sql.ErrNoRows) {
+		h.handleResponse(c, http.NOT_FOUND, "Order item type not found!")
+		return
+	}
 	if err != nil {
 		h.handleResponse(c, http.BadRequest, err.Error())
 		return
@@ -85,25 +79,40 @@ func (h *Handler) GetOrderItemTypeByID(c *gin.Context) {
 }
 
 func (h *Handler) UpdateOrderItemType(c *gin.Context) {
-	// token, err := utils.ExtractTokenID(c)
 	var body models.EditOrderItemTypeRequest
 	if err := c.ShouldBindJSON(&body); err != nil {
 		h.handleResponse(c, http.BadRequest, err.Error())
 		return
 	}
-	// if err != nil {
-	// 	h.handleResponse(c, http.BadRequest, err.Error())
-	// 	return
-	// }
-
-	// user, err := h.Stg.User().GetById(token.UserID)
-	// if err != nil {
-	// 	h.handleResponse(c, http.BadRequest, err.Error())
-	// 	return
-	// }
-	// body.CopmanyID = *user.CompanyID
 
 	rowsAffected, err := h.Stg.OrderItemType().Update(body)
+	if err != nil {
+		h.handleResponse(c, http.BadRequest, err.Error())
+		return
+	}
+
+	if rowsAffected == 0 {
+		h.handleResponse(c, http.NOT_FOUND, "Order item type not found!")
+		return
+	}
+
+	h.handleResponse(c, http.OK, rowsAffected)
+}
+
+func (h *Handler) DeleteOrderItemType(c *gin.Context) {
+	ID := c.Param("id")
+	if !utils.IsValidUUID(ID) {
+		h.handleResponse(c, http.InvalidArgument, "id is an invalid uuid")
+		return
+	}
+
+	var body models.DeleteOrderItemTypeRequest
+	if err := c.ShouldBindQuery(&body); err != nil {
+		h.handleResponse(c, http.BadRequest, err.Error())
+		return
+	}
+
+	rowsAffected, err := h.Stg.OrderItemType().Delete(ID, body.CompanyID)
 	if err != nil {
 		h.handleResponse(c, http.BadRequest, err.Error())
 		return
