@@ -70,7 +70,7 @@ func SetUpRouter(h handlers.Handler, cfg config.Config) (r *gin.Engine) {
 	{
 		orderRouter := baseRouter.Group("orders")
 		orderRouter.Use(middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg)).POST("", h.CreateOrderModel)
-		orderRouter.Use(middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg)).GET("", h.GetOrdersList)
+		orderRouter.GET("", middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg), middleware.RequirePermission("get_orders_list"), h.GetOrdersList)
 		orderRouter.Use(middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg)).GET("/:order-id", h.GetOrderByPrimaryKey)
 		orderRouter.Use(middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg)).POST("/edit", h.UpdateOrderModel)
 		orderRouter.Use(middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg)).POST("/set-price", h.SetOrderPrice)

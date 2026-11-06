@@ -39,31 +39,49 @@ type CreateOrderModel struct {
 }
 
 type OrderList struct {
-	ID          int       `json:"id"`
-	OrderNumber *string   `json:"order_number"`
-	Phone       string    `json:"phone"`
-	Address     *string   `json:"address"`
-	CourierID   *string   `json:"courier_id"`
-	Status      int16     `json:"status"`
-	Price       float64   `json:"price"`
-	CreatedAt   time.Time `json:"created_at"`
+	ID            int       `json:"id"`
+	OrderNumber   *string   `json:"order_number"`
+	Phone         string    `json:"phone"`
+	Address       *string   `json:"address"`
+	Description   *string   `json:"description"`
+	CourierID     *string   `json:"courier_id"`
+	CourierName   *string   `json:"courier_name"`
+	Status        int16     `json:"status"`
+	PaymentStatus *int16    `json:"payment_status"`
+	Price         float64   `json:"price"`
+	Paid          float64   `json:"paid"`
+	Debt          float64   `json:"debt"`
+	CreatedAt     time.Time `json:"created_at"`
+}
+
+// OrderListCounts: counts for the status chips. They honour search and period
+// but not the status/debtor filter. Statuses is keyed by status number.
+type OrderListCounts struct {
+	All      int            `json:"all"`
+	Debtor   int            `json:"debtor"`
+	Statuses map[string]int `json:"statuses"`
 }
 
 type OrderListResponse struct {
-	Data  []OrderList `json:"data"`
-	Count int         `json:"total"`
+	Data   []OrderList     `json:"data"`
+	Count  int             `json:"total"`
+	Counts OrderListCounts `json:"counts"`
 }
+
+// ErrBadDateRange: date_from is after date_to (handler answers 400).
+var ErrBadDateRange = errors.New("date_from is after date_to")
 
 type OrdersListRequest struct {
 	Limit         int32         `json:"limit" form:"limit"`
 	Offset        int32         `json:"offset" form:"offset"`
 	Status        int           `json:"status" form:"status"`
+	Debtor        bool          `json:"debtor" form:"debtor"`
 	PaymentStatus PaymentStatus `json:"payment_status" form:"payment_status"`
 	Phone         string        `json:"phone" form:"phone"`
 	Search        string        `json:"search" form:"search"`
 	ID            string        `json:"id" form:"id"`
-	DateFrom      time.Time     `json:"date_from" form:"date_from"`
-	DateTo        time.Time     `json:"date_to" form:"date_to"`
+	DateFrom      time.Time     `json:"date_from" form:"date_from" time_format:"2006-01-02"`
+	DateTo        time.Time     `json:"date_to" form:"date_to" time_format:"2006-01-02"`
 	CompanyID     string        `json:"company_id" form:"company_id" binding:"required"`
 	CourierID     string        `json:"courier_id" form:"courier_id"`
 }

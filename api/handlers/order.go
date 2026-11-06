@@ -158,7 +158,11 @@ func (h *Handler) GetOrdersList(c *gin.Context) {
 		return
 	}
 
-	data, err := h.Stg.Order().GetList(body.CompanyID, body)
+	data, err := h.Stg.Order().GetList(verifiedCompanyID(c, body.CompanyID), body)
+	if errors.Is(err, models.ErrBadDateRange) {
+		h.handleResponse(c, http.BadRequest, err.Error())
+		return
+	}
 	if err != nil {
 		h.handleResponse(c, http.BadRequest, err.Error())
 		return
