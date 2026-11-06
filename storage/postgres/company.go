@@ -142,7 +142,7 @@ func (stg *companyRepo) SetBlocked(companyID string, blocked bool, userID int64)
 	_, err := stg.db.Exec(`update companies
 		set is_blocked = $2,
 		    blocked_at = case when $2 then now() else null end,
-		    blocked_by = case when $2 then $3 else null end
+		    blocked_by = case when $2 then $3::bigint else null end
 		where id = $1`, companyID, blocked, userID)
 	return err
 }
