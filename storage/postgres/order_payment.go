@@ -53,16 +53,33 @@ func recalcAfterMoneyChange(tx *sqlx.Tx, orderID int) error {
 	return err
 }
 
+type queryRower interface {
+	QueryRow(query string, args ...interface{}) *sql.Row
+}
+
+func paymentSummary(q queryRower, orderID int) (models.PaymentSummary, error) {
+	return scanSummary(q.QueryRow(paymentSummarySQL, orderID))
+}
+
+// AddPayment runs inside one transaction with the order row locked, so two
+// simultaneous payments (a double tap) are serialised: the second one sees
+// the first and is dropped by the duplicate rule or the remaining check.
 func (stg *orderRepo) AddPayment(userID int64, entity models.AddOrderPaymentRequest) (models.PaymentSummary, error) {
+	tx, err := stg.db.Beginx()
+	if err != nil {
+		return models.PaymentSummary{}, err
+	}
+	defer tx.Rollback()
+
 	var orderID int
-	err := stg.db.QueryRow(`select id from orders where id = $1 and company_id = $2`, entity.OrderID, entity.CompanyID).Scan(&orderID)
+	err = tx.QueryRow(`select id from orders where id = $1 and company_id = $2 for update`, entity.OrderID, entity.CompanyID).Scan(&orderID)
 	if err != nil {
 		return models.PaymentSummary{}, err // sql.ErrNoRows → 404
 	}
 
 	// Duplicate within 1 minute by the same user, same order, same amount is ignored.
 	var exists bool
-	err = stg.db.QueryRow(`select exists(
+	err = tx.QueryRow(`select exists(
 			select 1 from transactions
 			where company_id = $1 and payer_type = 'orders' and payer_id = $2
 			  and receiver_type = 'users' and receiver_id = $3 and amount = $4
@@ -72,10 +89,10 @@ func (stg *orderRepo) AddPayment(userID int64, entity models.AddOrderPaymentRequ
 		return models.PaymentSummary{}, err
 	}
 	if exists {
-		return stg.GetPaymentSummary(entity.OrderID)
+		return paymentSummary(tx, entity.OrderID)
 	}
 
-	summary, err := stg.GetPaymentSummary(entity.OrderID)
+	summary, err := paymentSummary(tx, entity.OrderID)
 	if err != nil {
 		return summary, err
 	}
@@ -84,16 +101,10 @@ func (stg *orderRepo) AddPayment(userID int64, entity models.AddOrderPaymentRequ
 	}
 
 	var paymentPurposeID int
-	err = stg.db.QueryRow(`select id from payment_purposes where slug = 'orders' and company_id = $1`, entity.CompanyID).Scan(&paymentPurposeID)
+	err = tx.QueryRow(`select id from payment_purposes where slug = 'orders' and company_id = $1`, entity.CompanyID).Scan(&paymentPurposeID)
 	if err != nil {
 		return summary, err
 	}
-
-	tx, err := stg.db.Beginx()
-	if err != nil {
-		return summary, err
-	}
-	defer tx.Rollback()
 
 	_, err = tx.Exec(`insert into transactions(
 			company_id, payer_id, payer_type, amount, receiver_id, receiver_type,
