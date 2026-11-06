@@ -5,6 +5,7 @@ import (
 	"bw-erp/models"
 	"bw-erp/pkg/utils"
 	"bw-erp/storage/repo"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -120,12 +121,13 @@ func (stg userRepo) GetByPhone(phone string) (models.AuthUserModel, error) {
 
 func (stg userRepo) GetById(id int64) (models.User, error) {
 	var user models.User
-	err := stg.db.QueryRow(`select u.id, u.fullname, u.phone, c.id, u.is_active from users u left join companies c on c.id::text = u.company_id::text where u.id = $1`, id).Scan(
+	err := stg.db.QueryRow(`select u.id, u.fullname, u.phone, c.id, u.is_active, u.is_super_admin from users u left join companies c on c.id::text = u.company_id::text where u.id = $1`, id).Scan(
 		&user.ID,
 		&user.Fullname,
 		&user.Phone,
 		&user.CompanyID,
 		&user.IsActive,
+		&user.IsSuperAdmin,
 	)
 	if err != nil {
 		return user, err
@@ -136,8 +138,10 @@ func (stg userRepo) GetById(id int64) (models.User, error) {
 		return user, err
 	}
 
-	rows, err := stg.db.Query(`select c.id, c.name, uc.permission_ids, uc.is_courier from user_companies uc 
-								inner join companies c on c.id::text = uc.company_id::text 
+	rows, err := stg.db.Query(`select c.id, c.name, uc.permission_ids, uc.is_courier, c.is_blocked,
+								coalesce((select jsonb_object_agg(cs.key, cs.value) from company_settings cs where cs.company_id = c.id), '{}'::jsonb)
+								from user_companies uc
+								inner join companies c on c.id::text = uc.company_id::text
 								where uc.user_id = $1 order by c.name desc`, user.ID)
 	if err != nil {
 		return user, err
@@ -147,9 +151,11 @@ func (stg userRepo) GetById(id int64) (models.User, error) {
 	for rows.Next() {
 		var permissions models.UserPermissionByCompany
 		var permissionIDsStr string
-		if err := rows.Scan(&permissions.CompanyID, &permissions.CompanyName, &permissionIDsStr, &permissions.IsCourier); err != nil {
+		var settings []byte
+		if err := rows.Scan(&permissions.CompanyID, &permissions.CompanyName, &permissionIDsStr, &permissions.IsCourier, &permissions.IsBlocked, &settings); err != nil {
 			return user, err
 		}
+		permissions.Settings = json.RawMessage(settings)
 
 		if permissionIDsStr != "" {
 			Permissions := utils.GetArray(permissionIDsStr)
