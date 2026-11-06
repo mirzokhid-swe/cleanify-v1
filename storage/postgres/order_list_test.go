@@ -31,7 +31,9 @@ func TestOrdersListFilterWrapsSearch(t *testing.T) {
 func TestOrdersListFilterDateToInclusive(t *testing.T) {
 	d, _ := time.Parse("2006-01-02", "2026-11-03")
 	f, p := ordersListFilter("c", models.OrdersListRequest{DateTo: d, DateFrom: d})
-	if !strings.Contains(f, "o.created_at < (:date_to::date + 1)") || !strings.Contains(f, "o.created_at >= :date_from::date") {
+	// Day boundaries are Tashkent midnight regardless of the PG session time zone.
+	if !strings.Contains(f, "o.created_at < ((:date_to::date + 1)::timestamp AT TIME ZONE 'Asia/Tashkent')") ||
+		!strings.Contains(f, "o.created_at >= ((:date_from::date)::timestamp AT TIME ZONE 'Asia/Tashkent')") {
 		t.Fatal(f)
 	}
 	if p["date_to"] != d || p["date_from"] != d {

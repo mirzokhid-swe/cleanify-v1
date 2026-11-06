@@ -9,6 +9,10 @@ import (
 
 const ordersListMaxLimit = 150
 
+// ordersListTimeZone: created_at is timestamptz, so "Bugun" must start at local
+// midnight no matter what the PostgreSQL session time zone is.
+const ordersListTimeZone = "Asia/Tashkent"
+
 // ordersListFilter builds the WHERE of the base CTE: company, search (3+ chars:
 // order_number, phone, address), period (date_to inclusive). Pure.
 func ordersListFilter(companyID string, q models.OrdersListRequest) (string, map[string]interface{}) {
@@ -20,11 +24,11 @@ func ordersListFilter(companyID string, q models.OrdersListRequest) (string, map
 	}
 	if !q.DateFrom.IsZero() {
 		params["date_from"] = q.DateFrom
-		filter += " AND o.created_at >= :date_from::date"
+		filter += " AND o.created_at >= ((:date_from::date)::timestamp AT TIME ZONE '" + ordersListTimeZone + "')"
 	}
 	if !q.DateTo.IsZero() {
 		params["date_to"] = q.DateTo
-		filter += " AND o.created_at < (:date_to::date + 1)"
+		filter += " AND o.created_at < ((:date_to::date + 1)::timestamp AT TIME ZONE '" + ordersListTimeZone + "')"
 	}
 	return filter, params
 }
