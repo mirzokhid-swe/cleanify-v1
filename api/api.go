@@ -64,8 +64,7 @@ func SetUpRouter(h handlers.Handler, cfg config.Config) (r *gin.Engine) {
 	baseRouter.Static("/uploads", "./uploads")
 
 	{
-		companyRouter := baseRouter.Group("/company")
-		companyRouter.Use(middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg)).POST("", h.CreateCompanyModel)
+		companyRoutes(baseRouter.Group("/company"), &h, middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg))
 	}
 
 	{
@@ -172,4 +171,18 @@ func orderItemTypeRoutes(g *gin.RouterGroup, h *handlers.Handler, auth ...gin.Ha
 	g.PUT("", with("edit_order_item_type", h.UpdateOrderItemType)...)
 	g.GET("get-by-primary-key/:id", with("get_order_item_type", h.GetOrderItemTypeByID)...)
 	g.DELETE("/:id", with("delete_order_item_type", h.DeleteOrderItemType)...)
+}
+
+// companyRoutes registers the super admin company routes. auth must leave a
+// models.User in the context under "user"; SuperAdminMiddleware then checks it.
+func companyRoutes(g *gin.RouterGroup, h *handlers.Handler, auth ...gin.HandlerFunc) {
+	with := func(handler gin.HandlerFunc) []gin.HandlerFunc {
+		return append(append([]gin.HandlerFunc{}, auth...), middleware.SuperAdminMiddleware(), handler)
+	}
+	g.POST("", with(h.CreateCompanyModel)...)
+	g.GET("", with(h.GetCompaniesList)...)
+	g.GET("/:id", with(h.GetCompanyShow)...)
+	g.PATCH("/:id/settings", with(h.UpdateCompanySetting)...)
+	g.POST("/:id/block", with(h.BlockCompany)...)
+	g.POST("/:id/unblock", with(h.UnblockCompany)...)
 }
