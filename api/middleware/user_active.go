@@ -4,6 +4,8 @@ import (
 	"bw-erp/models"
 	"bw-erp/pkg/utils"
 	"bw-erp/storage"
+	"database/sql"
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -30,6 +32,13 @@ func UserActiveMiddleware(stg storage.StorageI) gin.HandlerFunc {
 		}
 
 		user, err := stg.User().GetById(jwtData.UserID)
+		if errors.Is(err, sql.ErrNoRows) {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+				"code":    http.StatusUnauthorized,
+				"message": "user not found",
+			})
+			return
+		}
 		if err != nil {
 			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
 				"code":    http.StatusBadRequest,
