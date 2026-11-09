@@ -198,3 +198,12 @@ func TestUsersCreateCompanyMismatchIs400(t *testing.T) {
 		t.Fatalf("code=%d body=%s created=%v", w.Code, w.Body.String(), users.created)
 	}
 }
+
+func TestUsersGetByIdDeletedIs404(t *testing.T) {
+	users := &fakeUserRepo{}
+	r := newUsersRouter(userWith("get_users_list"), users)
+	w := do(r, "GET", "/users/9", "")
+	if w.Code != http.StatusNotFound || responseStatus(w.Body.Bytes()) != "NOT_FOUND" {
+		t.Fatalf("code=%d body=%s", w.Code, w.Body.String())
+	}
+}

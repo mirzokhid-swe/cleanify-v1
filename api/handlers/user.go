@@ -150,6 +150,10 @@ func (h *Handler) GetById(c *gin.Context) {
 
 	user, err := h.Stg.User().GetById(int64(user_id))
 
+	if errors.Is(err, sql.ErrNoRows) {
+		h.handleResponse(c, http.NOT_FOUND, "user not found")
+		return
+	}
 	if err != nil {
 		h.handleResponse(c, http.BadRequest, err.Error())
 		return
