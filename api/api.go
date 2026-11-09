@@ -49,18 +49,8 @@ func SetUpRouter(h handlers.Handler, cfg config.Config) (r *gin.Engine) {
 			notificationRouter.Use(middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg)).GET("/unread-notifications-count", h.UnreadNotificationsCount)
 		}
 
-		usersRouter := baseRouter.Group("/users")
-		usersRouter.Use(middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg)).POST("", h.Create)
-		usersRouter.Use(middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg)).GET("", h.GetList)
-		usersRouter.Use(middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg)).POST("/edit", h.Edit)
-		usersRouter.Use(middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg)).GET("/:user-id", h.GetById)
-		usersRouter.Use(middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg)).GET("/couriers", h.GetCouriesList)
-
-		usersRouter.Use(middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg)).POST("/employees", h.CreateEmployee)
-		usersRouter.Use(middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg)).GET("/employees", h.GetEmployeeList)
-		usersRouter.Use(middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg)).GET("/employees/show", h.ShowEmployeeDetailedData)
-		usersRouter.Use(middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg)).POST("/employees/add-transaction", h.AddTransaction)
-		usersRouter.Use(middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg)).POST("/employees/attendance", h.Attendance)
+		usersRoutes(baseRouter.Group("/users"), &h, middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg))
+		rolesRoutes(baseRouter.Group("/roles"), &h, middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg))
 	}
 
 	baseRouter.Static("/uploads", "./uploads")
@@ -198,4 +188,44 @@ func companyRoutes(g *gin.RouterGroup, h *handlers.Handler, auth ...gin.HandlerF
 	g.PATCH("/:id/settings", with(h.UpdateCompanySetting)...)
 	g.POST("/:id/block", with(h.BlockCompany)...)
 	g.POST("/:id/unblock", with(h.UnblockCompany)...)
+}
+
+// usersRoutes registers the user routes. auth must leave a models.User in the
+// context under "user". Write routes need a permission slug in the request's
+// company_id; read routes stay auth only.
+func usersRoutes(g *gin.RouterGroup, h *handlers.Handler, auth ...gin.HandlerFunc) {
+	with := func(slug string, handler gin.HandlerFunc) []gin.HandlerFunc {
+		return append(append([]gin.HandlerFunc{}, auth...), middleware.RequirePermission(slug), handler)
+	}
+	authOnly := func(handler gin.HandlerFunc) []gin.HandlerFunc {
+		return append(append([]gin.HandlerFunc{}, auth...), handler)
+	}
+	g.POST("", with("user_create", h.Create)...)
+	g.POST("/edit", with("edit_user", h.Edit)...)
+	g.DELETE("/:user-id", with("delete_user", h.DeleteUser)...)
+	g.GET("", authOnly(h.GetList)...)
+	g.GET("/:user-id", authOnly(h.GetById)...)
+	g.GET("/couriers", authOnly(h.GetCouriesList)...)
+
+	g.POST("/employees", authOnly(h.CreateEmployee)...)
+	g.GET("/employees", authOnly(h.GetEmployeeList)...)
+	g.GET("/employees/show", authOnly(h.ShowEmployeeDetailedData)...)
+	g.POST("/employees/add-transaction", authOnly(h.AddTransaction)...)
+	g.POST("/employees/attendance", authOnly(h.Attendance)...)
+}
+
+// rolesRoutes registers the role routes. auth must leave a models.User in the
+// context under "user". Reads check one of several slugs in the handler.
+func rolesRoutes(g *gin.RouterGroup, h *handlers.Handler, auth ...gin.HandlerFunc) {
+	with := func(slug string, handler gin.HandlerFunc) []gin.HandlerFunc {
+		return append(append([]gin.HandlerFunc{}, auth...), middleware.RequirePermission(slug), handler)
+	}
+	authOnly := func(handler gin.HandlerFunc) []gin.HandlerFunc {
+		return append(append([]gin.HandlerFunc{}, auth...), handler)
+	}
+	g.GET("", authOnly(h.GetRoles)...)
+	g.GET("/:id", authOnly(h.GetRole)...)
+	g.POST("", with("manage_roles", h.CreateRole)...)
+	g.PUT("/:id", with("manage_roles", h.UpdateRole)...)
+	g.DELETE("/:id", with("manage_roles", h.DeleteRole)...)
 }

@@ -59,6 +59,11 @@ var (
 		Status:      "PERMISSION_DENIED",
 		Description: "Permission denied",
 	}
+	Conflict = Status{
+		Code:        409,
+		Status:      "CONFLICT",
+		Description: "Conflict",
+	}
 	// Locked: the company named by the request (or every company of the user) is blocked.
 	Locked = Status{
 		Code:        423,
