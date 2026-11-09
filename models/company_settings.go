@@ -25,7 +25,6 @@ var one = 1
 var hundred = 100
 
 var SettingsCatalog = map[string]SettingDef{
-	"permissions_mode":        {Type: "enum", Default: "individual", Values: []string{"role", "individual"}},
 	"order_card_code":         {Type: "bool", Default: false},
 	"lock_delivered_status":   {Type: "bool", Default: false},
 	"deliver_without_payment": {Type: "bool", Default: false},
