@@ -7,8 +7,3 @@ type Permission struct {
 	Scope string `json:"scope"`
 	Group string `json:"group"`
 }
-
-type RoleAndPermission struct {
-	RoleID        string
-	PermissionIDs string
-}
