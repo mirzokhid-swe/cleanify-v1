@@ -28,6 +28,13 @@ func (stg orderItemRepo) orderIDOfItem(itemID int) int {
 	return orderID
 }
 
+// GetOrderID returns the order of the item, sql.ErrNoRows when there is no such item.
+func (stg orderItemRepo) GetOrderID(itemID int) (int, error) {
+	var orderID int
+	err := stg.db.QueryRow(`select order_id from order_items where id = $1`, itemID).Scan(&orderID)
+	return orderID, err
+}
+
 func (stg orderItemRepo) Create(userID int64, entity models.CreateOrderItemModel) error {
 	var id int
 

@@ -97,11 +97,7 @@ func SetUpRouter(h handlers.Handler, cfg config.Config) (r *gin.Engine) {
 	}
 
 	{
-		orderItemRouter := baseRouter.Group("order-items")
-		orderItemRouter.Use(middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg)).POST("", h.CreateOrderItemModel)
-		orderItemRouter.Use(middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg)).POST("edit", h.UpdateOrderItemModel)
-		orderItemRouter.Use(middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg)).DELETE("/:id", h.DeleteOrderItemByID)
-		orderItemRouter.Use(middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg)).POST("/edit-status", h.UpdateOrderItemStatus)
+		orderItemRoutes(baseRouter.Group("order-items"), &h, middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg))
 	}
 
 	{
@@ -172,6 +168,19 @@ func orderItemTypeRoutes(g *gin.RouterGroup, h *handlers.Handler, auth ...gin.Ha
 	g.PUT("", with("edit_order_item_type", h.UpdateOrderItemType)...)
 	g.GET("get-by-primary-key/:id", with("get_order_item_type", h.GetOrderItemTypeByID)...)
 	g.DELETE("/:id", with("delete_order_item_type", h.DeleteOrderItemType)...)
+}
+
+// orderItemRoutes registers the order item routes. auth must leave a
+// models.User in the context under "user". The company comes from the order,
+// so each handler checks the permission itself with middleware.UserCan.
+func orderItemRoutes(g *gin.RouterGroup, h *handlers.Handler, auth ...gin.HandlerFunc) {
+	with := func(handler gin.HandlerFunc) []gin.HandlerFunc {
+		return append(append([]gin.HandlerFunc{}, auth...), handler)
+	}
+	g.POST("", with(h.CreateOrderItemModel)...)
+	g.POST("edit", with(h.UpdateOrderItemModel)...)
+	g.DELETE("/:id", with(h.DeleteOrderItemByID)...)
+	g.POST("/edit-status", with(h.UpdateOrderItemStatus)...)
 }
 
 // companyRoutes registers the super admin company routes. auth must leave a

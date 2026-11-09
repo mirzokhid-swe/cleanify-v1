@@ -2,12 +2,15 @@ package handlers
 
 import (
 	"bw-erp/api/http"
+	"bw-erp/api/middleware"
 	"bw-erp/models"
-	"bw-erp/pkg/utils"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
 )
+
+// Order item handlers learn the company from the order, not from the request,
+// so each one loads the order and checks the permission with UserCan.
 
 func (h *Handler) CreateOrderItemModel(c *gin.Context) {
 	var body models.CreateOrderItemModel
@@ -16,15 +19,21 @@ func (h *Handler) CreateOrderItemModel(c *gin.Context) {
 		return
 	}
 
-	_, err := h.Stg.Order().GetByPrimaryKey(body.OrderID)
+	order, err := h.Stg.Order().GetByPrimaryKey(body.OrderID)
 	if err != nil {
-		h.handleResponse(c, http.BadRequest, "Order not found")
+		h.handleResponse(c, http.NOT_FOUND, "Order not found")
 		return
 	}
 
-	orderItemType, err := h.Stg.OrderItemType().GetById(body.OrderItemTypeID, "")
+	if !middleware.UserCan(c, order.CompanyID, "create_order_item") {
+		h.handleResponse(c, http.PermissionDenied, "Permission denied")
+		return
+	}
+
+	// The type must belong to the order's company.
+	orderItemType, err := h.Stg.OrderItemType().GetById(body.OrderItemTypeID, order.CompanyID)
 	if err != nil {
-		h.handleResponse(c, http.BadRequest, err.Error())
+		h.handleResponse(c, http.BadRequest, "order item type not found")
 		return
 	}
 	body.ItemType = orderItemType.Name
@@ -35,19 +44,7 @@ func (h *Handler) CreateOrderItemModel(c *gin.Context) {
 		return
 	}
 
-	token, err := utils.ExtractTokenID(c)
-
-	if err != nil {
-		h.handleResponse(c, http.BadRequest, err.Error())
-		return
-	}
-
-	user, err := h.Stg.User().GetById(token.UserID)
-	if err != nil {
-		h.handleResponse(c, http.BadRequest, err.Error())
-		return
-	}
-
+	user := c.MustGet("user").(models.User)
 	err = h.Stg.OrderItem().Create(user.ID, body)
 	if err != nil {
 		h.handleResponse(c, http.BadRequest, err.Error())
@@ -64,9 +61,25 @@ func (h *Handler) UpdateOrderItemModel(c *gin.Context) {
 		return
 	}
 
-	orderItemType, err := h.Stg.OrderItemType().GetById(body.OrderItemTypeID, "")
+	orderID, err := h.Stg.OrderItem().GetOrderID(body.ID)
 	if err != nil {
-		h.handleResponse(c, http.BadRequest, err.Error())
+		h.handleResponse(c, http.NOT_FOUND, "Order item not found")
+		return
+	}
+	order, err := h.Stg.Order().GetByPrimaryKey(orderID)
+	if err != nil {
+		h.handleResponse(c, http.NOT_FOUND, "Order not found")
+		return
+	}
+
+	if !middleware.UserCan(c, order.CompanyID, "edit_order_item") {
+		h.handleResponse(c, http.PermissionDenied, "Permission denied")
+		return
+	}
+
+	orderItemType, err := h.Stg.OrderItemType().GetById(body.OrderItemTypeID, order.CompanyID)
+	if err != nil {
+		h.handleResponse(c, http.BadRequest, "order item type not found")
 		return
 	}
 	body.ItemType = orderItemType.Name
@@ -82,15 +95,29 @@ func (h *Handler) UpdateOrderItemModel(c *gin.Context) {
 }
 
 func (h *Handler) DeleteOrderItemByID(c *gin.Context) {
-	ID := c.Param("id")
-	orderItemID, err := strconv.Atoi(ID)
+	orderItemID, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		h.handleResponse(c, http.BadRequest, err.Error())
 		return
 	}
 
-	err = h.Stg.OrderItem().DeleteByID(orderItemID)
+	orderID, err := h.Stg.OrderItem().GetOrderID(orderItemID)
+	if err != nil {
+		h.handleResponse(c, http.NOT_FOUND, "Order item not found")
+		return
+	}
+	order, err := h.Stg.Order().GetByPrimaryKey(orderID)
+	if err != nil {
+		h.handleResponse(c, http.NOT_FOUND, "Order not found")
+		return
+	}
 
+	if !middleware.UserCan(c, order.CompanyID, "delete_order_item") {
+		h.handleResponse(c, http.PermissionDenied, "Permission denied")
+		return
+	}
+
+	err = h.Stg.OrderItem().DeleteByID(orderItemID)
 	if err != nil {
 		h.handleResponse(c, http.BadRequest, err.Error())
 		return
@@ -106,19 +133,23 @@ func (h *Handler) UpdateOrderItemStatus(c *gin.Context) {
 		return
 	}
 
-	token, err := utils.ExtractTokenID(c)
-
+	orderID, err := h.Stg.OrderItem().GetOrderID(body.ID)
 	if err != nil {
-		h.handleResponse(c, http.BadRequest, err.Error())
+		h.handleResponse(c, http.NOT_FOUND, "Order item not found")
+		return
+	}
+	order, err := h.Stg.Order().GetByPrimaryKey(orderID)
+	if err != nil {
+		h.handleResponse(c, http.NOT_FOUND, "Order not found")
 		return
 	}
 
-	user, err := h.Stg.User().GetById(token.UserID)
-	if err != nil {
-		h.handleResponse(c, http.BadRequest, err.Error())
+	if !middleware.UserCan(c, order.CompanyID, "edit_order_item") {
+		h.handleResponse(c, http.PermissionDenied, "Permission denied")
 		return
 	}
 
+	user := c.MustGet("user").(models.User)
 	_, err = h.Stg.OrderItem().UpdateStatus(user.ID, body)
 	if err != nil {
 		h.handleResponse(c, http.BadRequest, err.Error())
