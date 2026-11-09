@@ -23,9 +23,11 @@ func SetUpRouter(h handlers.Handler, cfg config.Config) (r *gin.Engine) {
 		{
 			authRouter := baseRouter.Group("/auth")
 			// authRouter.POST("/login", h.AuthUser)
-			authRouter.Use(middleware.UserActiveMiddleware(h.Stg)).POST("/me", h.CurrentUser)
+			// Middleware har yo'lga alohida: group.Use to'planib, refresh-token ga ham
+			// token tekshiruvini qo'shib qo'yardi (muddati o'tgan token bilan refresh 403).
+			authRouter.POST("/me", middleware.UserActiveMiddleware(h.Stg), h.CurrentUser)
 			authRouter.POST("/refresh-token", h.RefreshToken)
-			authRouter.Use(middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg)).POST("/change-password", h.ChangePassword)
+			authRouter.POST("/change-password", middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg), h.ChangePassword)
 		}
 
 		notificationRouter := baseRouter.Group("/notifications")
