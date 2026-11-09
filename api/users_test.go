@@ -3,6 +3,7 @@ package api
 import (
 	"database/sql"
 	"net/http"
+	"strings"
 	"testing"
 
 	"bw-erp/api/handlers"
@@ -163,5 +164,37 @@ func TestUsersEditRejectsForeignCompanyInPermissions(t *testing.T) {
 	w := do(r, "POST", "/users/edit", `{"company_id":"`+companyA+`","id":"9","fullname":"Ali","permissions":[{"company_id":"`+companyA+`"},{"company_id":"`+companyB+`"}]}`)
 	if w.Code != http.StatusForbidden || responseStatus(w.Body.Bytes()) != "PERMISSION_DENIED" || users.edited != nil {
 		t.Fatalf("code=%d body=%s edited=%v", w.Code, w.Body.String(), users.edited)
+	}
+}
+
+func TestUsersEditTargetOutsideCompanyIs404(t *testing.T) {
+	users := &fakeUserRepo{target: targetIn(companyB)}
+	r := newUsersRouter(userWith("edit_user"), users)
+	w := do(r, "POST", "/users/edit", `{"company_id":"`+companyA+`","id":"9","fullname":"Ali","permissions":[{"company_id":"`+companyA+`"}]}`)
+	if w.Code != http.StatusNotFound || users.edited != nil {
+		t.Fatalf("code=%d body=%s edited=%v", w.Code, w.Body.String(), users.edited)
+	}
+}
+
+func TestUsersEditAddsSecondCompany(t *testing.T) {
+	users := &fakeUserRepo{target: targetIn(companyA)}
+	r := newUsersRouter(func(c *gin.Context) {
+		c.Set("user", models.User{ID: 7, UserPermissionByCompany: []models.UserPermissionByCompany{
+			{CompanyID: companyA, Can: "edit_user"},
+			{CompanyID: companyB, Can: "edit_user"},
+		}})
+	}, users)
+	w := do(r, "POST", "/users/edit", `{"company_id":"`+companyA+`","id":"9","fullname":"Ali","permissions":[{"company_id":"`+companyA+`"},{"company_id":"`+companyB+`"}]}`)
+	if w.Code != http.StatusOK || users.edited == nil || len(users.edited.Permissions) != 2 {
+		t.Fatalf("code=%d body=%s edited=%v", w.Code, w.Body.String(), users.edited)
+	}
+}
+
+func TestUsersCreateCompanyMismatchIs400(t *testing.T) {
+	users := &fakeUserRepo{}
+	r := newUsersRouter(userWith("user_create"), users)
+	w := do(r, "POST", "/users", `{"company_id":"`+companyA+`","fullname":"Ali","phone":"991234567"}`)
+	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "company_id mismatch") || users.created != nil {
+		t.Fatalf("code=%d body=%s created=%v", w.Code, w.Body.String(), users.created)
 	}
 }

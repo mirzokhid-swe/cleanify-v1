@@ -21,6 +21,18 @@ func (h *Handler) Create(c *gin.Context) {
 	// RequirePermission("user_create") tekshirgan korxona
 	body.CompanyID = c.GetString("company_id")
 
+	// joriy korxona so'rovdagi huquqlar ichida bo'lishi shart (korxonasiz xodim foydasiz)
+	found := false
+	for _, p := range body.Permissions {
+		if p.CompanyID == body.CompanyID {
+			found = true
+		}
+	}
+	if !found {
+		h.handleResponse(c, http.BadRequest, "company_id mismatch")
+		return
+	}
+
 	// har bir korxonaga faqat o'sha korxonada user_create huquqi bilan xodim qo'shiladi
 	for _, p := range body.Permissions {
 		if !middleware.UserCan(c, p.CompanyID, "user_create") {
@@ -67,25 +79,6 @@ func (h *Handler) Edit(c *gin.Context) {
 		return
 	}
 
-	// har bir korxona huquqini faqat o'sha korxonada edit_user huquqi bilan o'zgartiradi
-	for _, p := range body.Permissions {
-		if !middleware.UserCan(c, p.CompanyID, "edit_user") {
-			h.handleResponse(c, http.PermissionDenied, "Permission denied")
-			return
-		}
-	}
-
-	// o'chirilgan xodim tahrirlanmaydi
-	_, err = h.Stg.User().GetById(userID)
-	if errors.Is(err, sql.ErrNoRows) {
-		h.handleResponse(c, http.NOT_FOUND, "user not found")
-		return
-	}
-	if err != nil {
-		h.handleResponse(c, http.InternalServerError, err.Error())
-		return
-	}
-
 	// RequirePermission("edit_user") tekshirgan korxona so'rovdagi huquqlar ichida bo'lishi shart
 	companyID := c.GetString("company_id")
 	found := false
@@ -96,6 +89,37 @@ func (h *Handler) Edit(c *gin.Context) {
 	}
 	if !found {
 		h.handleResponse(c, http.BadRequest, "company_id mismatch")
+		return
+	}
+
+	// har bir korxona huquqini faqat o'sha korxonada edit_user huquqi bilan o'zgartiradi
+	for _, p := range body.Permissions {
+		if !middleware.UserCan(c, p.CompanyID, "edit_user") {
+			h.handleResponse(c, http.PermissionDenied, "Permission denied")
+			return
+		}
+	}
+
+	// o'chirilgan xodim tahrirlanmaydi
+	target, err := h.Stg.User().GetById(userID)
+	if errors.Is(err, sql.ErrNoRows) {
+		h.handleResponse(c, http.NOT_FOUND, "user not found")
+		return
+	}
+	if err != nil {
+		h.handleResponse(c, http.InternalServerError, err.Error())
+		return
+	}
+
+	// boshqa korxona xodimi tahrirlanmaydi
+	inCompany := false
+	for _, uc := range target.UserPermissionByCompany {
+		if uc.CompanyID == companyID {
+			inCompany = true
+		}
+	}
+	if !inCompany {
+		h.handleResponse(c, http.NOT_FOUND, "user not found")
 		return
 	}
 
