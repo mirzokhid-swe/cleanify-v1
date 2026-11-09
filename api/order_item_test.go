@@ -104,12 +104,14 @@ func (itemsTypeRepo) GetById(id string, companyID string) (models.OrderItemByCom
 
 type itemsStorage struct {
 	storage.StorageI
-	items *itemsItemRepo
+	items     *itemsItemRepo
+	companies *fakeCompanies
 }
 
 func (s itemsStorage) Order() repo.OrderI                 { return itemsOrderRepo{} }
 func (s itemsStorage) OrderItem() repo.OrderItemI         { return s.items }
 func (s itemsStorage) OrderItemType() repo.OrderItemTypeI { return itemsTypeRepo{} }
+func (s itemsStorage) Company() repo.CompanyStorageI      { return s.companies }
 
 // itemUser works in company A with every item permission, nothing in B.
 func itemUser(c *gin.Context) {
@@ -130,9 +132,19 @@ func itemUserNoPerms(c *gin.Context) {
 func newItemRouter(user gin.HandlerFunc) (*gin.Engine, *itemsItemRepo) {
 	gin.SetMode(gin.TestMode)
 	items := &itemsItemRepo{}
-	h := handlers.Handler{Stg: itemsStorage{items: items}}
+	h := handlers.Handler{Stg: itemsStorage{items: items, companies: &fakeCompanies{}}}
 	r := gin.New()
 	orderItemRoutes(r.Group("/order-items"), &h, user)
+	return r, items
+}
+
+// newItemRouterWithSettings: company A's settings are the given rows.
+func newItemRouterWithSettings(settings map[string]json.RawMessage) (*gin.Engine, *itemsItemRepo) {
+	gin.SetMode(gin.TestMode)
+	items := &itemsItemRepo{}
+	h := handlers.Handler{Stg: itemsStorage{items: items, companies: &fakeCompanies{settings: settings}}}
+	r := gin.New()
+	orderItemRoutes(r.Group("/order-items"), &h, itemUser)
 	return r, items
 }
 
@@ -285,6 +297,35 @@ func TestCreateCountAboveLimitIs400(t *testing.T) {
 	w := do(r, "POST", "/order-items", `{"order_id":1,"order_item_type_id":"`+pieceOfA+`","price":1,"count":21}`)
 	if w.Code != http.StatusBadRequest || items.created != nil {
 		t.Fatalf("code=%d", w.Code)
+	}
+}
+
+func TestCreateCountUpToCompanyMax(t *testing.T) {
+	r, items := newItemRouterWithSettings(map[string]json.RawMessage{"item_count_max": json.RawMessage("50")})
+	w := do(r, "POST", "/order-items", `{"order_id":1,"order_item_type_id":"`+pieceOfA+`","price":1,"count":30}`)
+	if w.Code != http.StatusCreated || items.created == nil || items.created.Rows() != 30 {
+		t.Fatalf("code=%d body=%s", w.Code, w.Body.String())
+	}
+}
+
+func TestCreateCountAboveCompanyMaxIs400(t *testing.T) {
+	r, items := newItemRouterWithSettings(map[string]json.RawMessage{"item_count_max": json.RawMessage("5")})
+	w := do(r, "POST", "/order-items", `{"order_id":1,"order_item_type_id":"`+pieceOfA+`","price":1,"count":6}`)
+	if w.Code != http.StatusBadRequest || items.created != nil {
+		t.Fatalf("code=%d", w.Code)
+	}
+}
+
+func TestCreateCountWhenDisabledIs400(t *testing.T) {
+	r, items := newItemRouterWithSettings(map[string]json.RawMessage{"item_count_enabled": json.RawMessage("false")})
+	w := do(r, "POST", "/order-items", `{"order_id":1,"order_item_type_id":"`+pieceOfA+`","price":1,"count":2}`)
+	if w.Code != http.StatusBadRequest || items.created != nil {
+		t.Fatalf("code=%d", w.Code)
+	}
+	// "Soni" yo'q bo'lsa ham bitta buyum qo'shiladi.
+	w = do(r, "POST", "/order-items", `{"order_id":1,"order_item_type_id":"`+pieceOfA+`","price":1}`)
+	if w.Code != http.StatusCreated || items.created == nil || items.created.Rows() != 1 {
+		t.Fatalf("code=%d body=%s", w.Code, w.Body.String())
 	}
 }
 

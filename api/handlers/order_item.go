@@ -4,6 +4,7 @@ import (
 	"bw-erp/api/http"
 	"bw-erp/api/middleware"
 	"bw-erp/models"
+	"fmt"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
@@ -27,6 +28,18 @@ func (h *Handler) CreateOrderItemModel(c *gin.Context) {
 
 	if !middleware.UserCan(c, order.CompanyID, "create_order_item") {
 		h.handleResponse(c, http.PermissionDenied, "Permission denied")
+		return
+	}
+
+	// "Soni" chegarasi kompaniya sozlamasidan; o'chirilgan bo'lsa faqat 1.
+	company, err := h.Stg.Company().GetShow(order.CompanyID)
+	if err != nil {
+		h.handleResponse(c, http.BadRequest, "company not found")
+		return
+	}
+	countMax := models.ItemCountMax(company.Settings)
+	if body.Rows() > countMax {
+		h.handleResponse(c, http.BadRequest, fmt.Sprintf("count must be <= %d", countMax))
 		return
 	}
 

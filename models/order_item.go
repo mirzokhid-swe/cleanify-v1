@@ -19,7 +19,8 @@ type CreateOrderItemModel struct {
 	OrderItemStatus int8    `json:"status"`
 	Description     string  `json:"description"`
 	// Count: nechta bir xil qator yoziladi ("Soni"), bo'sh = 1.
-	Count int `json:"count" binding:"omitempty,gte=1,lte=20"`
+	// Eng katta qiymat kompaniya sozlamasidan (ItemCountMax), handler tekshiradi.
+	Count int `json:"count" binding:"omitempty,gte=1"`
 	// Quyidagilarni handler turdan to'ldiradi, mijoz yubora olmaydi.
 	ItemType    string `json:"-"`
 	IsCountable bool   `json:"-"`

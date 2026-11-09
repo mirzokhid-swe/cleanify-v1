@@ -15,11 +15,14 @@ type SettingDef struct {
 	Default interface{}
 	Values  []string
 	Min     *int
+	Max     *int
 }
 
 var ErrUnknownSetting = errors.New("unknown setting")
 
 var zero = 0
+var one = 1
+var hundred = 100
 
 var SettingsCatalog = map[string]SettingDef{
 	"permissions_mode":        {Type: "enum", Default: "individual", Values: []string{"role", "individual"}},
@@ -31,6 +34,9 @@ var SettingsCatalog = map[string]SettingDef{
 	"volume_skip_countable":   {Type: "bool", Default: false},
 	"kpi_enabled":             {Type: "bool", Default: false},
 	"storage_slots":           {Type: "bool", Default: false},
+	// Buyum qo'shishda "Soni" maydoni va uning eng katta qiymati.
+	"item_count_enabled": {Type: "bool", Default: true},
+	"item_count_max":     {Type: "int", Default: 20, Min: &one, Max: &hundred},
 }
 
 // DefaultSettings returns every catalog key with its default as JSON.
@@ -76,6 +82,9 @@ func ValidateSetting(key string, raw json.RawMessage) (json.RawMessage, error) {
 		if def.Min != nil && v < int64(*def.Min) {
 			return nil, fmt.Errorf("%s must be >= %d", key, *def.Min)
 		}
+		if def.Max != nil && v > int64(*def.Max) {
+			return nil, fmt.Errorf("%s must be <= %d", key, *def.Max)
+		}
 		return json.Marshal(v)
 	case "enum":
 		var v string
@@ -106,4 +115,20 @@ func MergeSettings(rows map[string]json.RawMessage) map[string]json.RawMessage {
 type UpdateCompanySettingRequest struct {
 	Key   string          `json:"key" binding:"required"`
 	Value json.RawMessage `json:"value" binding:"required"`
+}
+
+// ItemCountMax: bitta so'rovda nechta bir xil buyum qo'shsa bo'ladi.
+// "Soni" o'chirilgan bo'lsa 1. settings — MergeSettings natijasi.
+func ItemCountMax(settings map[string]json.RawMessage) int {
+	var enabled bool
+	_ = json.Unmarshal(settings["item_count_enabled"], &enabled)
+	if !enabled {
+		return 1
+	}
+	max := 1
+	_ = json.Unmarshal(settings["item_count_max"], &max)
+	if max < 1 {
+		return 1
+	}
+	return max
 }
