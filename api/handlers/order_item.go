@@ -45,7 +45,7 @@ func (h *Handler) CreateOrderItemModel(c *gin.Context) {
 	}
 
 	user := c.MustGet("user").(models.User)
-	err = h.Stg.OrderItem().Create(user.ID, body)
+	_, err = h.Stg.OrderItem().Create(user.ID, body)
 	if err != nil {
 		h.handleResponse(c, http.BadRequest, err.Error())
 		return

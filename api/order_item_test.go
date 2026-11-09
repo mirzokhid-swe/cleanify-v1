@@ -49,9 +49,13 @@ func (f *itemsItemRepo) GetOrderID(itemID int) (int, error) {
 	return 0, sql.ErrNoRows
 }
 
-func (f *itemsItemRepo) Create(userID int64, e models.CreateOrderItemModel) error {
+func (f *itemsItemRepo) Create(userID int64, e models.CreateOrderItemModel) ([]int, error) {
 	f.created = &e
-	return nil
+	ids := []int{}
+	for i := 0; i < e.Rows(); i++ {
+		ids = append(ids, 100+i)
+	}
+	return ids, nil
 }
 
 func (f *itemsItemRepo) Update(e models.UpdateOrderItemRequest) (int64, error) {

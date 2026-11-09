@@ -229,7 +229,7 @@ func (stg *orderRepo) GetDetailedByPrimaryKey(ID int) (models.OrderShowResponse,
 		return order, err
 	}
 
-	rows, err := stg.db.Query(`select id, order_id, type, price, width, height, status, is_countable, description, order_item_type_id from order_items where order_id = $1 order by created_at`, ID)
+	rows, err := stg.db.Query(`select id, order_id, type, price, width, height, status, is_countable, description, order_item_type_id, unit from order_items where order_id = $1 order by created_at`, ID)
 
 	if err != nil {
 		return order, err
@@ -238,7 +238,7 @@ func (stg *orderRepo) GetDetailedByPrimaryKey(ID int) (models.OrderShowResponse,
 
 	for rows.Next() {
 		var item models.OrderItem
-		if err := rows.Scan(&item.ID, &item.OrderID, &item.Type, &item.Price, &item.Width, &item.Height, &item.OrderItemStatus, &item.IsCountable, &item.Description, &item.OrderItemTypeID); err != nil {
+		if err := rows.Scan(&item.ID, &item.OrderID, &item.Type, &item.Price, &item.Width, &item.Height, &item.OrderItemStatus, &item.IsCountable, &item.Description, &item.OrderItemTypeID, &item.Unit); err != nil {
 			return order, err
 		}
 		data, err := stg.db.Query(`select sch.status, u.fullname, sch.created_at from status_change_histories sch inner join users u on u.id = sch.user_id where historyable_type = 'order_items' and historyable_id = $1 order by created_at desc`, item.ID)
