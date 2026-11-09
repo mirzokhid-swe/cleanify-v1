@@ -3,7 +3,11 @@ package models
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 )
+
+// ErrPhoneTaken: shu raqamli faol (o'chirilmagan) xodim bor (users_phone_active_key).
+var ErrPhoneTaken = errors.New("phone taken")
 
 type CreateUserModel struct {
 	Fullname    string             `json:"fullname" binding:"required" minLength:"2" maxLength:"255" example:"John Doe"`
@@ -75,6 +79,9 @@ type UpdateUserRequest struct {
 	Phone       string             `json:"phone"`
 	IsActive    *bool              `json:"is_active"`
 	Permissions []UserCompanyInput `json:"permissions"`
+	// ManageableCompanyIDs: chaqiruvchi edit_user ga ega korxonalar (handler to'ldiradi).
+	// Shulardan permissions[] da yo'qlarining user_companies qatori o'chiriladi.
+	ManageableCompanyIDs []string `json:"-"`
 }
 
 type GetUserListRequest struct {

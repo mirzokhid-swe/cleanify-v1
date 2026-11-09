@@ -65,3 +65,28 @@ func TestCompanyRepoSQLAgainstDatabase(t *testing.T) {
 		t.Fatalf("setting not stored: %s", show.Settings["kpi_enabled"])
 	}
 }
+
+func TestCompanyUsersCountExcludesDeleted(t *testing.T) {
+	db := testDB(t)
+	t.Cleanup(func() { db.Close() }) // insertTestUser cleanup'idan keyin yopiladi
+	repo := NewCompanyRepo(db)
+
+	before, err := repo.GetShow(demo2Company)
+	if err != nil {
+		t.Fatalf("show: %v", err)
+	}
+	userID := insertTestUser(t, db, "Test count")
+	if _, err := db.Exec(`insert into user_companies (user_id, company_id, permission_ids) values ($1, $2, '{}')`, userID, demo2Company); err != nil {
+		t.Fatalf("insert user_companies: %v", err)
+	}
+	if _, err := db.Exec(`update users set deleted_at = now() where id = $1`, userID); err != nil {
+		t.Fatalf("soft delete: %v", err)
+	}
+	after, err := repo.GetShow(demo2Company)
+	if err != nil {
+		t.Fatalf("show: %v", err)
+	}
+	if after.UsersCount != before.UsersCount {
+		t.Fatalf("users_count = %d, want %d (deleted user counted)", after.UsersCount, before.UsersCount)
+	}
+}

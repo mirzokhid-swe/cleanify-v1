@@ -42,6 +42,10 @@ func (h *Handler) Create(c *gin.Context) {
 	}
 
 	id, err := h.Stg.User().Create(body)
+	if errors.Is(err, models.ErrPhoneTaken) {
+		h.handleResponse(c, http.Conflict, "Bu raqam band")
+		return
+	}
 	if err != nil {
 		h.handleResponse(c, http.BadRequest, err.Error())
 		return
@@ -123,8 +127,36 @@ func (h *Handler) Edit(c *gin.Context) {
 		return
 	}
 
-	_, err = h.Stg.User().Edit(body)
+	value, ok := c.Get("user")
+	if !ok {
+		h.handleResponse(c, http.Unauthorized, "user not found in context")
+		return
+	}
+	current, ok := value.(models.User)
+	if !ok {
+		h.handleResponse(c, http.Unauthorized, "user not found in context")
+		return
+	}
 
+	// super adminni faqat super admin tahrirlaydi
+	if target.IsSuperAdmin && !current.IsSuperAdmin {
+		h.handleResponse(c, http.PermissionDenied, "Permission denied")
+		return
+	}
+
+	// chaqiruvchi edit_user ga ega korxonalar: permissions[] da yo'qlari xodimdan olib tashlanadi
+	body.ManageableCompanyIDs = []string{}
+	for _, uc := range current.UserPermissionByCompany {
+		if middleware.UserCan(c, uc.CompanyID, "edit_user") {
+			body.ManageableCompanyIDs = append(body.ManageableCompanyIDs, uc.CompanyID)
+		}
+	}
+
+	_, err = h.Stg.User().Edit(body)
+	if errors.Is(err, models.ErrPhoneTaken) {
+		h.handleResponse(c, http.Conflict, "Bu raqam band")
+		return
+	}
 	if err != nil {
 		h.handleResponse(c, http.BadRequest, err.Error())
 		return
@@ -220,6 +252,12 @@ func (h *Handler) DeleteUser(c *gin.Context) {
 	}
 	if !inCompany {
 		h.handleResponse(c, http.NOT_FOUND, "user not found")
+		return
+	}
+
+	// super adminni faqat super admin o'chiradi
+	if target.IsSuperAdmin && !current.IsSuperAdmin {
+		h.handleResponse(c, http.PermissionDenied, "Permission denied")
 		return
 	}
 

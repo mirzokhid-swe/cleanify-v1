@@ -47,6 +47,9 @@ func (stg userRepo) Create(entity models.CreateUserModel) (int64, error) {
 		entity.Fullname,
 		entity.CompanyID,
 	).Scan(&id)
+	if isPhoneTaken(err) {
+		return 0, models.ErrPhoneTaken
+	}
 	if err != nil {
 		return 0, err
 	}
@@ -61,6 +64,12 @@ func (stg userRepo) Create(entity models.CreateUserModel) (int64, error) {
 		return 0, err
 	}
 	return id, nil
+}
+
+// isPhoneTaken: faol xodimlar orasida raqam takrorlandi (users_phone_active_key).
+func isPhoneTaken(err error) bool {
+	var pqErr *pq.Error
+	return errors.As(err, &pqErr) && pqErr.Code == "23505" && pqErr.Constraint == "users_phone_active_key"
 }
 
 // writeUserCompany: RoleID berilsa rol shu korxonaniki ekani tekshiriladi va faqat
@@ -311,6 +320,9 @@ func (stg *userRepo) Edit(entity models.UpdateUserRequest) (rowsAffected int64, 
 	query, arr := helper.ReplaceQueryParams(query, params)
 
 	result, err := tx.Exec(query, arr...)
+	if isPhoneTaken(err) {
+		return 0, models.ErrPhoneTaken
+	}
 	if err != nil {
 		return 0, err
 	}
@@ -324,6 +336,18 @@ func (stg *userRepo) Edit(entity models.UpdateUserRequest) (rowsAffected int64, 
 		if err := writeUserCompany(tx, userID, in); err != nil {
 			return 0, err
 		}
+	}
+
+	// Filial dan olib tashlash: chaqiruvchi boshqaradigan, lekin permissions[] da yo'q korxonalar
+	sent := []string{}
+	for _, in := range entity.Permissions {
+		sent = append(sent, in.CompanyID)
+	}
+	_, err = tx.Exec(`delete from user_companies
+		where user_id = $1 and company_id::text = any($2::text[]) and not (company_id::text = any($3::text[]))`,
+		userID, pq.Array(entity.ManageableCompanyIDs), pq.Array(sent))
+	if err != nil {
+		return 0, err
 	}
 
 	if err := tx.Commit(); err != nil {

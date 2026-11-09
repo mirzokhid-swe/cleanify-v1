@@ -336,3 +336,97 @@ func TestOrderGetByIdCourierNameAfterDelete(t *testing.T) {
 		t.Fatalf("courier_name = %v, want Test kuryer", order.CourierName)
 	}
 }
+
+func TestUserEditRemovesUnsentManageableCompany(t *testing.T) {
+	db := testDB(t)
+	t.Cleanup(func() { db.Close() })
+	repo := NewUserRepo(db)
+
+	var otherCompany string
+	if err := db.Get(&otherCompany, `select id from companies where id <> $1 limit 1`, demo2Company); err != nil {
+		t.Skipf("boshqa korxona yo'q: %v", err)
+	}
+	userID := insertTestUser(t, db, "Test")
+	if _, err := db.Exec(`insert into user_companies (user_id, company_id, permission_ids) values ($1, $2, '{37}'), ($1, $3, '{37}')`, userID, demo2Company, otherCompany); err != nil {
+		t.Fatalf("insert user_companies: %v", err)
+	}
+
+	_, err := repo.Edit(models.UpdateUserRequest{
+		ID:                   strconv.FormatInt(userID, 10),
+		Permissions:          []models.UserCompanyInput{{CompanyID: demo2Company, PermissionIDs: []int{37}}},
+		ManageableCompanyIDs: []string{otherCompany},
+	})
+	if err != nil {
+		t.Fatalf("edit: %v", err)
+	}
+
+	var companies []string
+	if err := db.Select(&companies, `select company_id::text from user_companies where user_id = $1`, userID); err != nil {
+		t.Fatalf("select: %v", err)
+	}
+	if !reflect.DeepEqual(companies, []string{demo2Company}) {
+		t.Fatalf("companies = %v, want only demo2", companies)
+	}
+}
+
+func TestUserEditKeepsUnsentCompanyCallerCannotManage(t *testing.T) {
+	db := testDB(t)
+	t.Cleanup(func() { db.Close() })
+	repo := NewUserRepo(db)
+
+	var otherCompany string
+	if err := db.Get(&otherCompany, `select id from companies where id <> $1 limit 1`, demo2Company); err != nil {
+		t.Skipf("boshqa korxona yo'q: %v", err)
+	}
+	userID := insertTestUser(t, db, "Test")
+	if _, err := db.Exec(`insert into user_companies (user_id, company_id, permission_ids) values ($1, $2, '{37}'), ($1, $3, '{37}')`, userID, demo2Company, otherCompany); err != nil {
+		t.Fatalf("insert user_companies: %v", err)
+	}
+
+	_, err := repo.Edit(models.UpdateUserRequest{
+		ID:                   strconv.FormatInt(userID, 10),
+		Permissions:          []models.UserCompanyInput{{CompanyID: demo2Company, PermissionIDs: []int{37}}},
+		ManageableCompanyIDs: []string{demo2Company},
+	})
+	if err != nil {
+		t.Fatalf("edit: %v", err)
+	}
+
+	var n int
+	db.Get(&n, `select count(*) from user_companies where user_id = $1`, userID)
+	if n != 2 {
+		t.Fatalf("user_companies rows = %d, want 2", n)
+	}
+}
+
+func TestUserCreateDuplicatePhoneIsErrPhoneTaken(t *testing.T) {
+	db := testDB(t)
+	t.Cleanup(func() { db.Close() })
+	repo := NewUserRepo(db)
+
+	phone := fmt.Sprintf("+99800%07d", rand.Intn(10000000))
+	in := models.CreateUserModel{
+		Fullname:    "Test phone",
+		Phone:       phone,
+		CompanyID:   demo2Company,
+		Permissions: []models.UserCompanyInput{{CompanyID: demo2Company, PermissionIDs: []int{37}}},
+	}
+	firstID, err := repo.Create(in)
+	if err != nil {
+		t.Fatalf("first create: %v", err)
+	}
+	t.Cleanup(func() {
+		db.Exec(`delete from user_companies where user_id in (select id from users where phone = $1)`, phone)
+		db.Exec(`delete from users where phone = $1`, phone)
+	})
+
+	if _, err := repo.Create(in); !errors.Is(err, models.ErrPhoneTaken) {
+		t.Fatalf("second create: want ErrPhoneTaken, got %v", err)
+	}
+
+	otherID := insertTestUser(t, db, "Test phone 2")
+	_, err = repo.Edit(models.UpdateUserRequest{ID: strconv.FormatInt(otherID, 10), Phone: phone})
+	if !errors.Is(err, models.ErrPhoneTaken) {
+		t.Fatalf("edit to taken phone: want ErrPhoneTaken, got %v (first=%d)", err, firstID)
+	}
+}

@@ -77,7 +77,9 @@ func (stg *companyRepo) GetByOwnerId(ownerId int64) ([]models.Company, error) {
 }
 
 const companyListSelect = `select c.id, c.name, c.is_blocked,
-		(select count(distinct uc.user_id) from user_companies uc where uc.company_id = c.id::text)
+		(select count(distinct uc.user_id) from user_companies uc
+			join users u on u.id = uc.user_id
+			where uc.company_id = c.id::text and u.deleted_at is null)
 	from companies c`
 
 func (stg *companyRepo) GetList() ([]models.CompanyListItem, error) {

@@ -16,6 +16,7 @@ import (
 type fakeUserRepo struct {
 	repo.UserI
 	createErr  error
+	editErr    error
 	created    *models.CreateUserModel
 	edited     *models.UpdateUserRequest
 	target     *models.User // GetById result; nil → sql.ErrNoRows
@@ -40,6 +41,9 @@ func (f *fakeUserRepo) GetById(id int64) (models.User, error) {
 }
 
 func (f *fakeUserRepo) Edit(e models.UpdateUserRequest) (int64, error) {
+	if f.editErr != nil {
+		return 0, f.editErr
+	}
 	f.edited = &e
 	return 1, nil
 }
@@ -204,6 +208,66 @@ func TestUsersGetByIdDeletedIs404(t *testing.T) {
 	r := newUsersRouter(userWith("get_users_list"), users)
 	w := do(r, "GET", "/users/9", "")
 	if w.Code != http.StatusNotFound || responseStatus(w.Body.Bytes()) != "NOT_FOUND" {
+		t.Fatalf("code=%d body=%s", w.Code, w.Body.String())
+	}
+}
+
+func superAdminIn(companyID string) *models.User {
+	return &models.User{ID: 9, IsSuperAdmin: true, UserPermissionByCompany: []models.UserPermissionByCompany{{CompanyID: companyID}}}
+}
+
+func TestUsersDeleteSuperAdminByTenantIs403(t *testing.T) {
+	users := &fakeUserRepo{target: superAdminIn(companyA)}
+	r := newUsersRouter(userWith("delete_user"), users)
+	w := do(r, "DELETE", "/users/9?company_id="+companyA, "")
+	if w.Code != http.StatusForbidden || responseStatus(w.Body.Bytes()) != "PERMISSION_DENIED" || users.deleteCall {
+		t.Fatalf("code=%d body=%s", w.Code, w.Body.String())
+	}
+}
+
+func TestUsersEditSuperAdminByTenantIs403(t *testing.T) {
+	users := &fakeUserRepo{target: superAdminIn(companyA)}
+	r := newUsersRouter(userWith("edit_user"), users)
+	w := do(r, "POST", "/users/edit", `{"company_id":"`+companyA+`","id":"9","fullname":"Ali","permissions":[{"company_id":"`+companyA+`"}]}`)
+	if w.Code != http.StatusForbidden || responseStatus(w.Body.Bytes()) != "PERMISSION_DENIED" || users.edited != nil {
+		t.Fatalf("code=%d body=%s", w.Code, w.Body.String())
+	}
+}
+
+func TestUsersEditSendsManageableCompanies(t *testing.T) {
+	const companyC = "44444444-4444-4444-4444-444444444444"
+	users := &fakeUserRepo{target: targetIn(companyA)}
+	r := newUsersRouter(func(c *gin.Context) {
+		c.Set("user", models.User{ID: 7, UserPermissionByCompany: []models.UserPermissionByCompany{
+			{CompanyID: companyA, Can: "edit_user"},
+			{CompanyID: companyC, Can: "get_users_list"},
+			{CompanyID: companyB, Can: "user_create|edit_user"},
+		}})
+	}, users)
+	w := do(r, "POST", "/users/edit", `{"company_id":"`+companyA+`","id":"9","fullname":"Ali","permissions":[{"company_id":"`+companyA+`"}]}`)
+	if w.Code != http.StatusOK || users.edited == nil {
+		t.Fatalf("code=%d body=%s", w.Code, w.Body.String())
+	}
+	got := strings.Join(users.edited.ManageableCompanyIDs, ",")
+	if got != companyA+","+companyB {
+		t.Fatalf("manageable = %q, want A,B", got)
+	}
+}
+
+func TestUsersCreatePhoneTakenIs409(t *testing.T) {
+	users := &fakeUserRepo{createErr: models.ErrPhoneTaken}
+	r := newUsersRouter(userWith("user_create"), users)
+	w := do(r, "POST", "/users", `{"company_id":"`+companyA+`","fullname":"Ali","phone":"991234567","permissions":[{"company_id":"`+companyA+`"}]}`)
+	if w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), "Bu raqam band") {
+		t.Fatalf("code=%d body=%s", w.Code, w.Body.String())
+	}
+}
+
+func TestUsersEditPhoneTakenIs409(t *testing.T) {
+	users := &fakeUserRepo{target: targetIn(companyA), editErr: models.ErrPhoneTaken}
+	r := newUsersRouter(userWith("edit_user"), users)
+	w := do(r, "POST", "/users/edit", `{"company_id":"`+companyA+`","id":"9","phone":"991234567","permissions":[{"company_id":"`+companyA+`"}]}`)
+	if w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), "Bu raqam band") {
 		t.Fatalf("code=%d body=%s", w.Code, w.Body.String())
 	}
 }
