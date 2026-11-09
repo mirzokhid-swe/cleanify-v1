@@ -46,3 +46,10 @@ func TestAllCompaniesBlocked(t *testing.T) {
 		t.Fatal("no companies")
 	}
 }
+
+func TestAllCompaniesBlockedIgnoresSuperAdmin(t *testing.T) {
+	u := models.User{IsSuperAdmin: true, UserPermissionByCompany: []models.UserPermissionByCompany{{IsBlocked: true}}}
+	if allCompaniesBlocked(u) {
+		t.Fatal("super admin is never locked out")
+	}
+}

@@ -131,3 +131,30 @@ func TestRequirePermissionBlockedCompanyIs423(t *testing.T) {
 		t.Fatalf("body %s", w.Body.String())
 	}
 }
+
+func TestRequirePermissionLetsSuperAdminIntoBlockedCompany(t *testing.T) {
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest("GET", "/x?company_id=c-1", nil)
+	c.Set("user", models.User{IsSuperAdmin: true, UserPermissionByCompany: []models.UserPermissionByCompany{{CompanyID: "c-1", Can: "get_orders_list", IsBlocked: true}}})
+	RequirePermission("get_orders_list")(c)
+	if c.IsAborted() {
+		t.Fatalf("super admin blocked, code=%d", w.Code)
+	}
+}
+
+func TestUserCanSuperAdminInBlockedCompany(t *testing.T) {
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Set("user", models.User{IsSuperAdmin: true, UserPermissionByCompany: []models.UserPermissionByCompany{{CompanyID: "c-1", Can: "edit_order_item", IsBlocked: true}}})
+	if !UserCan(c, "c-1", "edit_order_item") {
+		t.Fatal("super admin should pass in a blocked company")
+	}
+}
+
+func TestUserCanBlockedCompanyDeniesEmployee(t *testing.T) {
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Set("user", models.User{UserPermissionByCompany: []models.UserPermissionByCompany{{CompanyID: "c-1", Can: "edit_order_item", IsBlocked: true}}})
+	if UserCan(c, "c-1", "edit_order_item") {
+		t.Fatal("employee must not pass in a blocked company")
+	}
+}

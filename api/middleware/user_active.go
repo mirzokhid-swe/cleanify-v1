@@ -58,7 +58,11 @@ func UserActiveMiddleware(stg storage.StorageI) gin.HandlerFunc {
 
 // allCompaniesBlocked is true when the user has companies and every one of
 // them is blocked; such a user may only call auth/me (to see the blocked screen).
+// A super admin is never locked out.
 func allCompaniesBlocked(u models.User) bool {
+	if u.IsSuperAdmin {
+		return false
+	}
 	if len(u.UserPermissionByCompany) == 0 {
 		return false
 	}

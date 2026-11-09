@@ -87,7 +87,8 @@ func UserCan(c *gin.Context, companyID string, slug string) bool {
 		return false
 	}
 	uc, found := companyPermissions(user, companyID)
-	return found && !uc.IsBlocked && hasPermission(uc.Can, slug)
+	// A super admin works in blocked companies too; employees do not.
+	return found && (!uc.IsBlocked || user.IsSuperAdmin) && hasPermission(uc.Can, slug)
 }
 
 // RequirePermission allows the request only when the user set by
@@ -125,7 +126,7 @@ func RequirePermission(slug string) gin.HandlerFunc {
 			forbid(c, "Permission denied")
 			return
 		}
-		if uc.IsBlocked {
+		if uc.IsBlocked && !user.IsSuperAdmin {
 			locked(c)
 			return
 		}
