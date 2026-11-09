@@ -1,5 +1,7 @@
 package models
 
+import "errors"
+
 type OrderItemStatus int8
 
 const (
@@ -16,8 +18,20 @@ type CreateOrderItemModel struct {
 	Height          float32 `json:"height"`
 	OrderItemStatus int8    `json:"status"`
 	Description     string  `json:"description"`
-	ItemType        string  `json:"item_type"`
-	IsCountable     bool    `json:"is_countable"`
+	// Count: nechta bir xil qator yoziladi ("Soni"), bo'sh = 1.
+	Count int `json:"count" binding:"omitempty,gte=1,lte=20"`
+	// Quyidagilarni handler turdan to'ldiradi, mijoz yubora olmaydi.
+	ItemType    string `json:"-"`
+	IsCountable bool   `json:"-"`
+	Unit        string `json:"-"`
+}
+
+// Rows: nechta qator yoziladi.
+func (m CreateOrderItemModel) Rows() int {
+	if m.Count < 1 {
+		return 1
+	}
+	return m.Count
 }
 
 type UpdateOrderItemRequest struct {
@@ -27,8 +41,44 @@ type UpdateOrderItemRequest struct {
 	Width           float32 `json:"width"`
 	Height          float32 `json:"height"`
 	Description     string  `json:"description"`
-	ItemType        string  `json:"item_type"`
-	IsCountable     bool    `json:"is_countable"`
+	// Quyidagilarni handler turdan to'ldiradi, mijoz yubora olmaydi.
+	ItemType    string `json:"-"`
+	IsCountable bool   `json:"-"`
+	Unit        string `json:"-"`
+}
+
+var (
+	ErrAreaRequired     = errors.New("width and height are required")
+	ErrQuantityRequired = errors.New("quantity is required")
+)
+
+// MeasureForUnit: so'rovdagi o'lchamni birlikka qarab saqlanadigan width, height ga aylantiradi.
+// Narx hamma joyda price × width × height, shuning uchun:
+//   - area (m²): bo'yi va eni, ikkalasi > 0;
+//   - piece (dona): 1 × 1;
+//   - length (metr), weight (kg): width = miqdor, height = 1. Eski front ikkala tomonni
+//     yuboradi (3×1 yoki 1×3), shuning uchun miqdor = width × height (0 o'rniga 1).
+func MeasureForUnit(unit string, width, height float32) (float32, float32, error) {
+	switch unit {
+	case "piece":
+		return 1, 1, nil
+	case "length", "weight":
+		if width == 0 && height == 0 {
+			return 0, 0, ErrQuantityRequired
+		}
+		if width == 0 {
+			width = 1
+		}
+		if height == 0 {
+			height = 1
+		}
+		return width * height, 1, nil
+	default:
+		if width <= 0 || height <= 0 {
+			return 0, 0, ErrAreaRequired
+		}
+		return width, height, nil
+	}
 }
 
 type UpdateOrderItemStatusRequest struct {
@@ -45,6 +95,7 @@ type OrderItem struct {
 	Height              float32               `json:"height,omitempty"`
 	OrderItemStatus     OrderItemStatus       `json:"status,omitempty"`
 	IsCountable         bool                  `json:"is_countable,omitempty"`
+	Unit                string                `json:"unit,omitempty"`
 	Description         string                `json:"description,omitempty"`
 	OrderItemTypeID     *string               `json:"order_item_type_id,omitempty"`
 	StatusChangeHistory []StatusChangeHistory `json:"status_change_history,omitempty"`
