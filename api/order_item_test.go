@@ -73,16 +73,31 @@ func (f *itemsItemRepo) UpdateStatus(userID int64, e models.UpdateOrderItemStatu
 	return 1, nil
 }
 
-// Only company A has the type typeOfA.
+// Only company A has these types, one per unit.
 type itemsTypeRepo struct {
 	repo.OrderItemTypeI
 }
 
-const typeOfA = "44444444-4444-4444-4444-444444444444"
+const (
+	typeOfA   = "44444444-4444-4444-4444-444444444444" // area
+	pieceOfA  = "55555555-5555-5555-5555-555555555555"
+	lengthOfA = "66666666-6666-6666-6666-666666666666"
+	weightOfA = "77777777-7777-7777-7777-777777777777"
+)
 
 func (itemsTypeRepo) GetById(id string, companyID string) (models.OrderItemByCompany, error) {
-	if id == typeOfA && companyID == companyA {
-		return models.OrderItemByCompany{ID: id, Name: "Gilam", CopmanyID: companyA}, nil
+	if companyID != companyA {
+		return models.OrderItemByCompany{}, sql.ErrNoRows
+	}
+	switch id {
+	case typeOfA:
+		return models.OrderItemByCompany{ID: id, Name: "Gilam", Unit: "area", CopmanyID: companyA}, nil
+	case pieceOfA:
+		return models.OrderItemByCompany{ID: id, Name: "Odeyalo", Unit: "piece", IsCountable: true, CopmanyID: companyA}, nil
+	case lengthOfA:
+		return models.OrderItemByCompany{ID: id, Name: "Ko'rpacha", Unit: "length", CopmanyID: companyA}, nil
+	case weightOfA:
+		return models.OrderItemByCompany{ID: id, Name: "Parda", Unit: "weight", CopmanyID: companyA}, nil
 	}
 	return models.OrderItemByCompany{}, sql.ErrNoRows
 }
@@ -211,6 +226,92 @@ func TestEditDeleteStatusOwnItemAllowed(t *testing.T) {
 func TestUnknownItemIs404(t *testing.T) {
 	r, _ := newItemRouter(itemUser)
 	if w := do(r, "DELETE", "/order-items/999", ""); w.Code != http.StatusNotFound {
+		t.Fatalf("code=%d", w.Code)
+	}
+}
+
+func TestCreateAreaWithoutSizesIs400(t *testing.T) {
+	r, items := newItemRouter(itemUser)
+	w := do(r, "POST", "/order-items", `{"order_id":1,"order_item_type_id":"`+typeOfA+`","price":1,"width":0,"height":0}`)
+	if w.Code != http.StatusBadRequest || items.created != nil {
+		t.Fatalf("code=%d created=%v", w.Code, items.created)
+	}
+}
+
+func TestCreatePieceForcesOneByOneAndCountRows(t *testing.T) {
+	r, items := newItemRouter(itemUser)
+	w := do(r, "POST", "/order-items", `{"order_id":1,"order_item_type_id":"`+pieceOfA+`","price":50000,"width":7,"height":9,"count":3}`)
+	if w.Code != http.StatusCreated || items.created == nil {
+		t.Fatalf("code=%d body=%s", w.Code, w.Body.String())
+	}
+	c := items.created
+	if c.Width != 1 || c.Height != 1 || c.Unit != "piece" || !c.IsCountable || c.ItemType != "Odeyalo" {
+		t.Fatalf("created %+v", c)
+	}
+	var resp struct {
+		Data struct {
+			IDs []int `json:"ids"`
+		} `json:"data"`
+	}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	if len(resp.Data.IDs) != 3 {
+		t.Fatalf("ids %s", w.Body.String())
+	}
+}
+
+// Metr/kg: miqdor width da, height = 1 (egasi, 2026-11-09).
+func TestCreateLengthStoresQuantityInWidth(t *testing.T) {
+	r, items := newItemRouter(itemUser)
+	w := do(r, "POST", "/order-items", `{"order_id":1,"order_item_type_id":"`+lengthOfA+`","price":25000,"width":3}`)
+	if w.Code != http.StatusCreated || items.created == nil {
+		t.Fatalf("code=%d body=%s", w.Code, w.Body.String())
+	}
+	c := items.created
+	if c.Width != 3 || c.Height != 1 || c.Unit != "length" || c.IsCountable {
+		t.Fatalf("created %+v", c)
+	}
+}
+
+func TestCreateLengthWithoutQuantityIs400(t *testing.T) {
+	r, items := newItemRouter(itemUser)
+	w := do(r, "POST", "/order-items", `{"order_id":1,"order_item_type_id":"`+lengthOfA+`","price":25000}`)
+	if w.Code != http.StatusBadRequest || items.created != nil {
+		t.Fatalf("code=%d", w.Code)
+	}
+}
+
+func TestCreateCountAboveLimitIs400(t *testing.T) {
+	r, items := newItemRouter(itemUser)
+	w := do(r, "POST", "/order-items", `{"order_id":1,"order_item_type_id":"`+pieceOfA+`","price":1,"count":21}`)
+	if w.Code != http.StatusBadRequest || items.created != nil {
+		t.Fatalf("code=%d", w.Code)
+	}
+}
+
+func TestClientCannotSetUnitOrCountable(t *testing.T) {
+	r, items := newItemRouter(itemUser)
+	do(r, "POST", "/order-items", `{"order_id":1,"order_item_type_id":"`+typeOfA+`","price":1,"width":2,"height":3,"unit":"piece","is_countable":true,"item_type":"x"}`)
+	if items.created == nil || items.created.Unit != "area" || items.created.IsCountable || items.created.ItemType != "Gilam" {
+		t.Fatalf("created %+v", items.created)
+	}
+}
+
+func TestEditNormalisesByUnit(t *testing.T) {
+	r, items := newItemRouter(itemUser)
+	w := do(r, "POST", "/order-items/edit", `{"id":10,"order_item_type_id":"`+weightOfA+`","price":30000,"width":4.5,"height":0}`)
+	if w.Code != http.StatusOK || items.updated == nil {
+		t.Fatalf("code=%d body=%s", w.Code, w.Body.String())
+	}
+	u := items.updated
+	if u.Width != 4.5 || u.Height != 1 || u.Unit != "weight" || u.ItemType != "Parda" || u.OrderItemTypeID != weightOfA {
+		t.Fatalf("updated %+v", u)
+	}
+}
+
+func TestEditAreaWithoutSizesIs400(t *testing.T) {
+	r, items := newItemRouter(itemUser)
+	w := do(r, "POST", "/order-items/edit", `{"id":10,"order_item_type_id":"`+typeOfA+`","price":1,"width":0,"height":2}`)
+	if w.Code != http.StatusBadRequest || items.updated != nil {
 		t.Fatalf("code=%d", w.Code)
 	}
 }

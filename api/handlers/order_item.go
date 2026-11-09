@@ -36,22 +36,24 @@ func (h *Handler) CreateOrderItemModel(c *gin.Context) {
 		h.handleResponse(c, http.BadRequest, "order item type not found")
 		return
 	}
+	// Nomi, birligi turdan nusxa olinadi; o'lcham birlikka qarab tayyorlanadi.
 	body.ItemType = orderItemType.Name
-	body.IsCountable = orderItemType.IsCountable
-
-	if !body.IsCountable && (body.Width == 0 && body.Height == 0) {
-		h.handleResponse(c, http.BadRequest, "width and height is required")
-		return
-	}
-
-	user := c.MustGet("user").(models.User)
-	_, err = h.Stg.OrderItem().Create(user.ID, body)
+	body.Unit = orderItemType.Unit
+	body.IsCountable = models.UnitIsCountable(orderItemType.Unit)
+	body.Width, body.Height, err = models.MeasureForUnit(body.Unit, body.Width, body.Height)
 	if err != nil {
 		h.handleResponse(c, http.BadRequest, err.Error())
 		return
 	}
 
-	h.handleResponse(c, http.Created, "Created successfully!")
+	user := c.MustGet("user").(models.User)
+	ids, err := h.Stg.OrderItem().Create(user.ID, body)
+	if err != nil {
+		h.handleResponse(c, http.BadRequest, err.Error())
+		return
+	}
+
+	h.handleResponse(c, http.Created, gin.H{"ids": ids})
 }
 
 func (h *Handler) UpdateOrderItemModel(c *gin.Context) {
@@ -82,8 +84,15 @@ func (h *Handler) UpdateOrderItemModel(c *gin.Context) {
 		h.handleResponse(c, http.BadRequest, "order item type not found")
 		return
 	}
+	// Tur almashsa nomi va birligi ham yangilanadi; o'lcham birlikka qarab.
 	body.ItemType = orderItemType.Name
-	body.IsCountable = orderItemType.IsCountable
+	body.Unit = orderItemType.Unit
+	body.IsCountable = models.UnitIsCountable(orderItemType.Unit)
+	body.Width, body.Height, err = models.MeasureForUnit(body.Unit, body.Width, body.Height)
+	if err != nil {
+		h.handleResponse(c, http.BadRequest, err.Error())
+		return
+	}
 
 	_, err = h.Stg.OrderItem().Update(body)
 	if err != nil {
