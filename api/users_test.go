@@ -89,8 +89,14 @@ func TestUsersEditDeletedIs404(t *testing.T) {
 }
 
 func TestUsersEditCompanyMismatchIs400(t *testing.T) {
+	// caller may edit in both A and B, but the active company A is missing from permissions[]
 	users := &fakeUserRepo{target: targetIn(companyB)}
-	r := newUsersRouter(userWith("edit_user"), users)
+	r := newUsersRouter(func(c *gin.Context) {
+		c.Set("user", models.User{ID: 7, UserPermissionByCompany: []models.UserPermissionByCompany{
+			{CompanyID: companyA, Can: "edit_user"},
+			{CompanyID: companyB, Can: "edit_user"},
+		}})
+	}, users)
 	w := do(r, "POST", "/users/edit", `{"company_id":"`+companyA+`","id":"9","fullname":"Ali","permissions":[{"company_id":"`+companyB+`"}]}`)
 	if w.Code != http.StatusBadRequest || users.edited != nil {
 		t.Fatalf("code=%d body=%s", w.Code, w.Body.String())
@@ -139,5 +145,23 @@ func TestUsersDeleteOK(t *testing.T) {
 	w := do(r, "DELETE", "/users/9?company_id="+companyA, "")
 	if w.Code != http.StatusOK || !users.deleteCall || users.deletedID != 9 || users.deletedBy != 7 {
 		t.Fatalf("code=%d body=%s deleted=%d by=%d", w.Code, w.Body.String(), users.deletedID, users.deletedBy)
+	}
+}
+
+func TestUsersCreateRejectsForeignCompanyInPermissions(t *testing.T) {
+	users := &fakeUserRepo{}
+	r := newUsersRouter(userWith("user_create"), users)
+	w := do(r, "POST", "/users", `{"company_id":"`+companyA+`","fullname":"Ali","phone":"991234567","permissions":[{"company_id":"`+companyA+`"},{"company_id":"`+companyB+`"}]}`)
+	if w.Code != http.StatusForbidden || responseStatus(w.Body.Bytes()) != "PERMISSION_DENIED" || users.created != nil {
+		t.Fatalf("code=%d body=%s created=%v", w.Code, w.Body.String(), users.created)
+	}
+}
+
+func TestUsersEditRejectsForeignCompanyInPermissions(t *testing.T) {
+	users := &fakeUserRepo{target: targetIn(companyA)}
+	r := newUsersRouter(userWith("edit_user"), users)
+	w := do(r, "POST", "/users/edit", `{"company_id":"`+companyA+`","id":"9","fullname":"Ali","permissions":[{"company_id":"`+companyA+`"},{"company_id":"`+companyB+`"}]}`)
+	if w.Code != http.StatusForbidden || responseStatus(w.Body.Bytes()) != "PERMISSION_DENIED" || users.edited != nil {
+		t.Fatalf("code=%d body=%s edited=%v", w.Code, w.Body.String(), users.edited)
 	}
 }

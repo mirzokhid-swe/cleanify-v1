@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bw-erp/api/http"
+	"bw-erp/api/middleware"
 	"bw-erp/models"
 	"database/sql"
 	"errors"
@@ -19,6 +20,14 @@ func (h *Handler) Create(c *gin.Context) {
 	}
 	// RequirePermission("user_create") tekshirgan korxona
 	body.CompanyID = c.GetString("company_id")
+
+	// har bir korxonaga faqat o'sha korxonada user_create huquqi bilan xodim qo'shiladi
+	for _, p := range body.Permissions {
+		if !middleware.UserCan(c, p.CompanyID, "user_create") {
+			h.handleResponse(c, http.PermissionDenied, "Permission denied")
+			return
+		}
+	}
 
 	id, err := h.Stg.User().Create(body)
 	if err != nil {
@@ -56,6 +65,14 @@ func (h *Handler) Edit(c *gin.Context) {
 	if err != nil {
 		h.handleResponse(c, http.BadRequest, err.Error())
 		return
+	}
+
+	// har bir korxona huquqini faqat o'sha korxonada edit_user huquqi bilan o'zgartiradi
+	for _, p := range body.Permissions {
+		if !middleware.UserCan(c, p.CompanyID, "edit_user") {
+			h.handleResponse(c, http.PermissionDenied, "Permission denied")
+			return
+		}
 	}
 
 	// o'chirilgan xodim tahrirlanmaydi
