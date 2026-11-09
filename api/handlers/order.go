@@ -228,20 +228,34 @@ func (h *Handler) AddOrderPayment(c *gin.Context) {
 	h.handleResponse(c, http.OK, summary)
 }
 
-// DeleteOrderTransaction soft-deletes one order payment of the verified company.
+// DeleteOrderTransaction soft-deletes one order payment. Allowed with delete_transaction
+// in the payment's company, or without it for a payment the user entered themselves
+// (receiver_id) while working in that company.
 func (h *Handler) DeleteOrderTransaction(c *gin.Context) {
 	transactionID, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		h.handleResponse(c, http.InvalidArgument, "id is not a number")
 		return
 	}
-	var body models.DeleteTransactionRequest
-	if err := c.ShouldBindQuery(&body); err != nil {
+
+	payment, err := h.Stg.Order().GetOrderPayment(transactionID)
+	if errors.Is(err, sql.ErrNoRows) {
+		h.handleResponse(c, http.NOT_FOUND, "Transaction not found!")
+		return
+	}
+	if err != nil {
 		h.handleResponse(c, http.BadRequest, err.Error())
 		return
 	}
 
-	summary, err := h.Stg.Order().DeleteTransaction(currentUserID(c), transactionID, verifiedCompanyID(c, body.CompanyID))
+	userID := currentUserID(c)
+	own := payment.ReceiverID == userID && middleware.UserInCompany(c, payment.CompanyID)
+	if !own && !middleware.UserCan(c, payment.CompanyID, "delete_transaction") {
+		h.handleResponse(c, http.PermissionDenied, "Permission denied")
+		return
+	}
+
+	summary, err := h.Stg.Order().DeleteTransaction(userID, transactionID, payment.CompanyID)
 	if errors.Is(err, sql.ErrNoRows) {
 		h.handleResponse(c, http.NOT_FOUND, "Transaction not found!")
 		return

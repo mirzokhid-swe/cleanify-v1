@@ -91,6 +91,22 @@ func UserCan(c *gin.Context, companyID string, slug string) bool {
 	return found && (!uc.IsBlocked || user.IsSuperAdmin) && hasPermission(uc.Can, slug)
 }
 
+// UserInCompany reports whether the user in the context works in companyID
+// (a blocked company counts only for a super admin). For actions allowed
+// without a slug, e.g. deleting one's own payment.
+func UserInCompany(c *gin.Context, companyID string) bool {
+	value, ok := c.Get("user")
+	if !ok {
+		return false
+	}
+	user, ok := value.(models.User)
+	if !ok {
+		return false
+	}
+	uc, found := companyPermissions(user, companyID)
+	return found && (!uc.IsBlocked || user.IsSuperAdmin)
+}
+
 // RequirePermission allows the request only when the user set by
 // UserActiveMiddleware has the permission slug in the company named by the
 // request (query or JSON body company_id; when both are sent they must be

@@ -151,3 +151,12 @@ func (stg *orderRepo) DeleteTransaction(userID int64, transactionID int, company
 	}
 	return stg.GetPaymentSummary(orderID)
 }
+
+// GetOrderPayment: o'chirilmagan buyurtma to'lovining kompaniyasi va kiritgan foydalanuvchisi;
+// yo'q bo'lsa sql.ErrNoRows.
+func (stg *orderRepo) GetOrderPayment(transactionID int) (models.OrderPaymentRef, error) {
+	var ref models.OrderPaymentRef
+	err := stg.db.QueryRow(`select company_id, coalesce(receiver_id, 0) from transactions
+		where id = $1 and payer_type = 'orders' and deleted_at is null`, transactionID).Scan(&ref.CompanyID, &ref.ReceiverID)
+	return ref, err
+}

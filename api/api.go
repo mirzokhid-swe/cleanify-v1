@@ -77,7 +77,8 @@ func SetUpRouter(h handlers.Handler, cfg config.Config) (r *gin.Engine) {
 		orderRouter.Use(middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg)).POST("/edit", h.UpdateOrderModel)
 		orderRouter.Use(middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg)).POST("/set-price", h.SetOrderPrice)
 		orderRouter.POST("add-payment", middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg), middleware.RequirePermission("add_payment"), h.AddOrderPayment)
-		orderRouter.DELETE("/transactions/:id", middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg), middleware.RequirePermission("delete_transaction"), h.DeleteOrderTransaction)
+		// huquq handler'da: delete_transaction yoki o'zi kiritgan to'lov
+		orderRouter.DELETE("/transactions/:id", middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg), h.DeleteOrderTransaction)
 		orderRouter.Use(middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg)).GET("get-transactions-by-order", h.GetTransactionByOrder)
 		orderRouter.Use(middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg)).DELETE("", h.DeleteOrder)
 		orderRouter.Use(middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg)).POST("/comment", h.AddOrderComment)

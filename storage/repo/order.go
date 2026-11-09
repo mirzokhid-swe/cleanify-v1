@@ -18,6 +18,7 @@ type OrderI interface {
 	GetPaymentSummary(orderID int) (models.PaymentSummary, error)
 	AddPayment(userID int64, entity models.AddOrderPaymentRequest) (models.PaymentSummary, error)
 	DeleteTransaction(userID int64, transactionID int, companyID string) (models.PaymentSummary, error)
+	GetOrderPayment(transactionID int) (models.OrderPaymentRef, error)
 	RecalcPaymentStatus(orderID int) error
 	AddComment(entity models.CreateOrderComment) error
 	GetByUuid(uuid string) (models.OrderReceipt, error)

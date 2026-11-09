@@ -271,7 +271,7 @@ func (stg *orderRepo) GetDetailedByPrimaryKey(ID int) (models.OrderShowResponse,
 		order.StatusChangeHistory = append(order.StatusChangeHistory, history)
 	}
 
-	transactions, err := stg.db.Query(`select t.id, u.fullname, t.payment_type, t.amount, t.created_at, t.deleted_at, du.fullname
+	transactions, err := stg.db.Query(`select t.id, t.receiver_id, u.fullname, t.payment_type, t.amount, t.created_at, t.deleted_at, du.fullname
 									from transactions t
 									inner join users u on t.receiver_type = 'users' and t.receiver_id = u.id
 									left join users du on du.id = t.deleted_by
@@ -284,7 +284,7 @@ func (stg *orderRepo) GetDetailedByPrimaryKey(ID int) (models.OrderShowResponse,
 
 	for transactions.Next() {
 		var transaction models.OrderTransaction
-		if err := transactions.Scan(&transaction.ID, &transaction.ReceiverFullname, &transaction.PaymentType, &transaction.Amount, &transaction.CreatedAt, &transaction.DeletedAt, &transaction.DeletedByFullname); err != nil {
+		if err := transactions.Scan(&transaction.ID, &transaction.ReceiverID, &transaction.ReceiverFullname, &transaction.PaymentType, &transaction.Amount, &transaction.CreatedAt, &transaction.DeletedAt, &transaction.DeletedByFullname); err != nil {
 			return order, err
 		}
 		order.OrderTransaction = append(order.OrderTransaction, transaction)

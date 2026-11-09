@@ -48,3 +48,9 @@ func PaymentAmountErrorFor(amount float64, s PaymentSummary) string {
 type DeleteTransactionRequest struct {
 	CompanyID string `form:"company_id" binding:"required"`
 }
+
+// OrderPaymentRef: o'chirishdan oldin huquqni tekshirish uchun to'lovning kompaniyasi va kiritgan foydalanuvchi.
+type OrderPaymentRef struct {
+	CompanyID  string
+	ReceiverID int64
+}

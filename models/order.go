@@ -102,7 +102,9 @@ type CreateOrderComment struct {
 }
 
 type OrderTransaction struct {
-	ID                int        `json:"id"`
+	ID int `json:"id"`
+	// ReceiverID: to'lovni kiritgan foydalanuvchi (front o'z to'lovini o'chirish tugmasi uchun).
+	ReceiverID        int64      `json:"receiver_id"`
 	ReceiverFullname  string     `json:"receiver_fullname"`
 	PaymentType       uint8      `json:"payment_type"`
 	Amount            float64    `json:"amount"`
