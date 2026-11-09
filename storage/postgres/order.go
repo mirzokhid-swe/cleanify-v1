@@ -171,6 +171,7 @@ func (stg *orderRepo) GetDetailedByPrimaryKey(ID int) (models.OrderShowResponse,
 									coalesce(o.discounted_price, 0),
 									coalesce(round(sum(oi.width * oi.height * oi.price)::numeric, 2), 0) as price,
 									COALESCE(o.courier_id, null) as courier_id,
+									cu.fullname as courier_name,
 									o.created_at,
 									o.updated_at,
 									coalesce((select sum(t.amount) from transactions t where t.payer_type = 'orders' and t.payer_id = o.id and t.deleted_at is null), 0) as paid,
@@ -178,6 +179,7 @@ func (stg *orderRepo) GetDetailedByPrimaryKey(ID int) (models.OrderShowResponse,
 								from orders o
 								left join clients c on o.client_id = c.id 
 								left join order_items oi on oi.order_id = o.id
+								left join users cu on cu.id = o.courier_id
 								where o.id = $1 group by 
 									o.id, 
 									o.company_id, 
@@ -199,7 +201,8 @@ func (stg *orderRepo) GetDetailedByPrimaryKey(ID int) (models.OrderShowResponse,
 									o.discounted_price,
 									o.created_at,
 									o.updated_at,
-									o.slots `, ID).Scan(
+									o.slots,
+									cu.fullname `, ID).Scan(
 		&order.ID,
 		&order.CompanyID,
 		&order.PhoneNumber,
@@ -220,6 +223,7 @@ func (stg *orderRepo) GetDetailedByPrimaryKey(ID int) (models.OrderShowResponse,
 		&order.DiscountPrice,
 		&order.Price,
 		&order.CourierID,
+		&order.CourierName,
 		&order.CreatedAt,
 		&order.UpdatedAt,
 		&order.Paid,

@@ -116,6 +116,11 @@ func (stg *roleRepo) Delete(id int64, companyID string) (int64, error) {
 		return 0, models.ErrRoleInUse
 	}
 	res, err := stg.db.Exec(`delete from roles where id = $1 and company_id = $2`, id, companyID)
+	// tekshiruv va o'chirish orasida rol biriktirilgan bo'lsa (foreign_key_violation)
+	var pqErr *pq.Error
+	if errors.As(err, &pqErr) && pqErr.Code == "23503" {
+		return 0, models.ErrRoleInUse
+	}
 	if err != nil {
 		return 0, fmt.Errorf("delete role: %w", err)
 	}

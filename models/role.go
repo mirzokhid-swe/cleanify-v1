@@ -4,6 +4,7 @@ import "errors"
 
 var ErrRoleNameTaken = errors.New("role name taken")
 var ErrRoleInUse = errors.New("role in use")
+var ErrRoleForeign = errors.New("role belongs to another company")
 
 type Role struct {
 	ID            int64  `json:"id"`

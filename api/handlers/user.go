@@ -17,13 +17,13 @@ func (h *Handler) Create(c *gin.Context) {
 	}
 	// id := uuid.New()
 
-	err := h.Stg.User().Create(body)
+	id, err := h.Stg.User().Create(body)
 	if err != nil {
 		h.handleResponse(c, http.BadRequest, err.Error())
 		return
 	}
 
-	h.handleResponse(c, http.OK, "OK")
+	h.handleResponse(c, http.OK, gin.H{"id": id})
 }
 
 func (h *Handler) GetList(c *gin.Context) {

@@ -103,3 +103,36 @@ func TestRoleDeleteInUse(t *testing.T) {
 		t.Fatalf("role after refused delete: %+v err=%v", got, err)
 	}
 }
+
+// Sanash tekshiruvidan o'tgan, lekin FK to'sgan holat (o'chirish poygasi): o'chirilgan
+// xodimda role_id qolgan — count 0, delete esa 23503 beradi → ErrRoleInUse.
+func TestRoleDeleteForeignKeyViolationIsInUse(t *testing.T) {
+	db := testDB(t)
+	t.Cleanup(func() { db.Close() })
+	repo := NewRoleRepo(db)
+
+	id, err := repo.Create(models.RoleInput{CompanyID: demo2Company, Name: "Test rol fk"})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	t.Cleanup(func() { db.Exec(`delete from roles where id = $1`, id) })
+
+	var userID int64
+	phone := fmt.Sprintf("+99800%07d", rand.Intn(10000000))
+	err = db.Get(&userID, `insert into users (phone, fullname, is_active, deleted_at) values ($1, 'Test', false, now()) returning id`, phone)
+	if err != nil {
+		t.Fatalf("insert user: %v", err)
+	}
+	t.Cleanup(func() { db.Exec(`delete from users where id = $1`, userID) })
+
+	_, err = db.Exec(`insert into user_companies (user_id, company_id, permission_ids, role_id) values ($1, $2, '{}', $3)`, userID, demo2Company, id)
+	if err != nil {
+		t.Fatalf("insert user_companies: %v", err)
+	}
+	t.Cleanup(func() { db.Exec(`delete from user_companies where user_id = $1`, userID) })
+
+	_, err = repo.Delete(id, demo2Company)
+	if !errors.Is(err, models.ErrRoleInUse) {
+		t.Fatalf("want ErrRoleInUse, got %v", err)
+	}
+}

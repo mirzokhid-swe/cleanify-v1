@@ -5,12 +5,15 @@ import (
 	"bw-erp/models"
 	"bw-erp/pkg/utils"
 	"bw-erp/storage/repo"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/jmoiron/sqlx"
+	"github.com/lib/pq"
 )
 
 type userRepo struct {
@@ -21,9 +24,15 @@ func NewUserRepo(db *sqlx.DB) repo.UserI {
 	return &userRepo{db: db}
 }
 
-func (stg userRepo) Create(entity models.CreateUserModel) error {
-	var id string
-	err := stg.db.QueryRow(`INSERT INTO users(
+func (stg userRepo) Create(entity models.CreateUserModel) (int64, error) {
+	tx, err := stg.db.Beginx()
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+
+	var id int64
+	err = tx.QueryRow(`INSERT INTO users(
 		phone,
 		fullname,
 		company_id,
@@ -38,75 +47,55 @@ func (stg userRepo) Create(entity models.CreateUserModel) error {
 		entity.Fullname,
 		entity.CompanyID,
 	).Scan(&id)
-
 	if err != nil {
-		return err
+		return 0, err
 	}
 
-	// Add permissions if provided
-	if len(entity.Permissions) > 0 {
-		for _, permission := range entity.Permissions {
-			// Check if user already has permissions for this company
-			var userCompanyID string
-			stg.db.QueryRow(`SELECT company_id FROM user_companies WHERE company_id = $1 AND user_id = $2`,
-				permission.CompanyID, id).Scan(&userCompanyID)
-
-			PermissionIDs := utils.SetArray(utils.IntSliceToInterface(permission.PermissionIDs))
-
-			if len(userCompanyID) > 0 {
-				// Update existing permissions
-				query := `UPDATE "user_companies" SET 
-					permission_ids = :permission_ids, 
-					is_courier = :is_courier, 
-					updated_at = now() 
-				WHERE company_id = :company_id AND user_id = :user_id`
-
-				permissionEditParams := map[string]interface{}{
-					"permission_ids": PermissionIDs,
-					"is_courier":     permission.IsCourier,
-					"company_id":     permission.CompanyID,
-					"user_id":        id,
-				}
-
-				query, arr := helper.ReplaceQueryParams(query, permissionEditParams)
-
-				_, err := stg.db.Exec(query, arr...)
-
-				if err != nil {
-					return err
-				}
-			} else {
-				// Insert new permissions
-				_, err := stg.db.Exec(`INSERT INTO user_companies(
-					permission_ids,
-					company_id,
-					user_id,
-					is_courier
-				) VALUES (
-					$1,
-					$2,
-					$3,
-					$4
-				)`,
-					PermissionIDs,
-					permission.CompanyID,
-					id,
-					permission.IsCourier,
-				)
-
-				if err != nil {
-					return err
-				}
-			}
+	for _, in := range entity.Permissions {
+		if err := writeUserCompany(tx, id, in); err != nil {
+			return 0, err
 		}
 	}
 
-	return nil
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return id, nil
+}
+
+// writeUserCompany: RoleID berilsa rol shu korxonaniki ekani tekshiriladi va faqat
+// role_id, is_courier yoziladi (permission_ids saqlanib qoladi); aks holda role_id = NULL
+// va o'z permission_ids yoziladi.
+func writeUserCompany(tx *sqlx.Tx, userID int64, in models.UserCompanyInput) error {
+	if in.RoleID != nil {
+		var roleCompanyID string
+		err := tx.QueryRow(`select company_id::text from roles where id = $1`, *in.RoleID).Scan(&roleCompanyID)
+		if errors.Is(err, sql.ErrNoRows) {
+			return models.ErrRoleForeign
+		}
+		if err != nil {
+			return err
+		}
+		if roleCompanyID != in.CompanyID {
+			return models.ErrRoleForeign
+		}
+		_, err = tx.Exec(`insert into user_companies (user_id, company_id, role_id, permission_ids, is_courier, created_at, updated_at)
+			values ($1, $2, $3, '{}', $4, now(), now())
+			on conflict (user_id, company_id) do update set role_id = excluded.role_id, is_courier = excluded.is_courier, updated_at = now()`,
+			userID, in.CompanyID, *in.RoleID, in.IsCourier)
+		return err
+	}
+
+	_, err := tx.Exec(`insert into user_companies (user_id, company_id, role_id, permission_ids, is_courier, created_at, updated_at)
+		values ($1, $2, null, $3, $4, now(), now())
+		on conflict (user_id, company_id) do update set role_id = null, permission_ids = excluded.permission_ids, is_courier = excluded.is_courier, updated_at = now()`,
+		userID, in.CompanyID, permissionArray(in.PermissionIDs), in.IsCourier)
+	return err
 }
 
 func (stg userRepo) GetByPhone(phone string) (models.AuthUserModel, error) {
 	var user models.AuthUserModel
-	err := stg.db.QueryRow(`SELECT id, phone, password from users where phone = $1`, phone).Scan(
+	err := stg.db.QueryRow(`SELECT id, phone, password from users where phone = $1 and deleted_at is null`, phone).Scan(
 		&user.ID,
 		&user.Phone,
 		&user.Password,
@@ -121,7 +110,7 @@ func (stg userRepo) GetByPhone(phone string) (models.AuthUserModel, error) {
 
 func (stg userRepo) GetById(id int64) (models.User, error) {
 	var user models.User
-	err := stg.db.QueryRow(`select u.id, u.fullname, u.phone, c.id, u.is_active, u.is_super_admin from users u left join companies c on c.id::text = u.company_id::text where u.id = $1`, id).Scan(
+	err := stg.db.QueryRow(`select u.id, u.fullname, u.phone, c.id, u.is_active, u.is_super_admin from users u left join companies c on c.id::text = u.company_id::text where u.id = $1 and u.deleted_at is null`, id).Scan(
 		&user.ID,
 		&user.Fullname,
 		&user.Phone,
@@ -138,10 +127,11 @@ func (stg userRepo) GetById(id int64) (models.User, error) {
 		return user, err
 	}
 
-	rows, err := stg.db.Query(`select c.id, c.name, uc.permission_ids, uc.is_courier, c.is_blocked,
+	rows, err := stg.db.Query(`select c.id, c.name, uc.permission_ids, uc.role_id, r.name, r.permission_ids, uc.is_courier, c.is_blocked,
 								coalesce((select jsonb_object_agg(cs.key, cs.value) from company_settings cs where cs.company_id = c.id), '{}'::jsonb)
 								from user_companies uc
 								inner join companies c on c.id::text = uc.company_id::text
+								left join roles r on r.id = uc.role_id
 								where uc.user_id = $1 order by c.name desc`, user.ID)
 	if err != nil {
 		return user, err
@@ -150,60 +140,65 @@ func (stg userRepo) GetById(id int64) (models.User, error) {
 
 	for rows.Next() {
 		var permissions models.UserPermissionByCompany
-		var permissionIDsStr string
+		var ownIDs, roleIDs pq.Int64Array
 		var settings []byte
-		if err := rows.Scan(&permissions.CompanyID, &permissions.CompanyName, &permissionIDsStr, &permissions.IsCourier, &permissions.IsBlocked, &settings); err != nil {
+		if err := rows.Scan(&permissions.CompanyID, &permissions.CompanyName, &ownIDs, &permissions.RoleID, &permissions.RoleName, &roleIDs, &permissions.IsCourier, &permissions.IsBlocked, &settings); err != nil {
 			return user, err
 		}
 		permissions.Settings = json.RawMessage(settings)
 
-		if permissionIDsStr != "" {
-			Permissions := utils.GetArray(permissionIDsStr)
-			Permission := ""
-			permissions.PermissionIDs = utils.InterfaceSliceToInt(Permissions)
-
-			for _, permID := range permissions.PermissionIDs {
-				permIDStr := fmt.Sprintf("%d", permID)
-				if perm, ok := allPermissions[permIDStr]; ok {
-					Permission += "|" + perm.Slug
-				}
-			}
-			permissions.Can = strings.TrimPrefix(Permission, "|")
+		permissions.PermissionIDs = make([]int, 0, len(ownIDs))
+		for _, permID := range ownIDs {
+			permissions.PermissionIDs = append(permissions.PermissionIDs, int(permID))
 		}
 
+		// rol biriktirilgan bo'lsa huquqlar roldan, aks holda o'z permission_ids dan
+		canIDs := ownIDs
+		if permissions.RoleID != nil {
+			canIDs = roleIDs
+		}
+		Permission := ""
+		for _, permID := range canIDs {
+			permIDStr := fmt.Sprintf("%d", permID)
+			if perm, ok := allPermissions[permIDStr]; ok {
+				Permission += "|" + perm.Slug
+			}
+		}
+		permissions.Can = strings.TrimPrefix(Permission, "|")
+
 		user.UserPermissionByCompany = append(user.UserPermissionByCompany, permissions)
+	}
+	if err = rows.Err(); err != nil {
+		return user, err
 	}
 
 	return user, nil
 }
 
-func (stg userRepo) GetList(companyID string) ([]models.User, error) {
-	rows, err := stg.db.Query(`SELECT 
-								u.id, 
-								u.fullname, 
-								u.phone,
-								c.id,
-								u.is_active
-								FROM users u 
-								LEFT JOIN companies c ON c.id::text = u.company_id::text 
-								WHERE c.id is not null and c.id::text = $1`, companyID)
-
+func (stg userRepo) GetList(companyID string) ([]models.UserListItem, error) {
+	rows, err := stg.db.Query(`select u.id, coalesce(u.fullname, ''), coalesce(u.phone, ''), coalesce(u.is_active, false),
+								coalesce(uc.is_courier, false), uc.role_id, r.name, uc.permission_ids
+								from user_companies uc
+								join users u on u.id = uc.user_id
+								left join roles r on r.id = uc.role_id
+								where uc.company_id::text = $1 and u.deleted_at is null
+								order by u.fullname`, companyID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	var users []models.User
+	users := []models.UserListItem{}
 	for rows.Next() {
-		var user models.User
-		err = rows.Scan(
-			&user.ID,
-			&user.Fullname,
-			&user.Phone,
-			&user.CompanyID,
-			&user.IsActive)
+		var user models.UserListItem
+		var ids pq.Int64Array
+		err = rows.Scan(&user.ID, &user.Fullname, &user.Phone, &user.IsActive, &user.IsCourier, &user.RoleID, &user.RoleName, &ids)
 		if err != nil {
 			return nil, err
+		}
+		user.PermissionIDs = make([]int, 0, len(ids))
+		for _, id := range ids {
+			user.PermissionIDs = append(user.PermissionIDs, int(id))
 		}
 		users = append(users, user)
 	}
@@ -278,6 +273,17 @@ func (stg *userRepo) GetAllPermissions() (map[string]models.Permission, error) {
 }
 
 func (stg *userRepo) Edit(entity models.UpdateUserRequest) (rowsAffected int64, err error) {
+	userID, err := strconv.ParseInt(entity.ID, 10, 64)
+	if err != nil {
+		return 0, err
+	}
+
+	tx, err := stg.db.Beginx()
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+
 	query := `UPDATE "users" SET `
 
 	if entity.Fullname != "" {
@@ -296,7 +302,7 @@ func (stg *userRepo) Edit(entity models.UpdateUserRequest) (rowsAffected int64, 
 			  WHERE id = :id `
 
 	params := map[string]interface{}{
-		"id":        entity.ID,
+		"id":        userID,
 		"fullname":  entity.Fullname,
 		"phone":     entity.Phone,
 		"is_active": entity.IsActive,
@@ -304,8 +310,7 @@ func (stg *userRepo) Edit(entity models.UpdateUserRequest) (rowsAffected int64, 
 
 	query, arr := helper.ReplaceQueryParams(query, params)
 
-	result, err := stg.db.Exec(query, arr...)
-
+	result, err := tx.Exec(query, arr...)
 	if err != nil {
 		return 0, err
 	}
@@ -315,60 +320,15 @@ func (stg *userRepo) Edit(entity models.UpdateUserRequest) (rowsAffected int64, 
 		return 0, err
 	}
 
-	if len(entity.Permissions) > 0 {
-		for _, permission := range entity.Permissions {
-			var userCompanyID string
-			stg.db.QueryRow(`SELECT company_id FROM user_companies WHERE company_id = $1 AND user_id = $2`,
-				permission.CompanyID, entity.ID).Scan(&userCompanyID)
-
-			PermissionIDs := utils.SetArray(utils.IntSliceToInterface(permission.PermissionIDs))
-
-			if len(userCompanyID) > 0 {
-				query = `UPDATE "user_companies" SET 
-					permission_ids = :permission_ids, 
-					is_courier = :is_courier, 
-					updated_at = now() 
-				WHERE company_id = :company_id AND user_id = :user_id`
-
-				permissionEditParams := map[string]interface{}{
-					"permission_ids": PermissionIDs,
-					"is_courier":     permission.IsCourier,
-					"company_id":     permission.CompanyID,
-					"user_id":        entity.ID,
-				}
-
-				query, arr := helper.ReplaceQueryParams(query, permissionEditParams)
-
-				_, err := stg.db.Exec(query, arr...)
-
-				if err != nil {
-					return 0, err
-				}
-			} else {
-				_, err := stg.db.Exec(`INSERT INTO user_companies(
-					permission_ids,
-					company_id,
-					user_id,
-					is_courier
-				) VALUES (
-					$1,
-					$2,
-					$3,
-					$4
-				)`,
-					PermissionIDs,
-					permission.CompanyID,
-					entity.ID,
-					permission.IsCourier,
-				)
-
-				if err != nil {
-					return 0, err
-				}
-			}
+	for _, in := range entity.Permissions {
+		if err := writeUserCompany(tx, userID, in); err != nil {
+			return 0, err
 		}
 	}
 
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
 	return rowsAffected, nil
 }
 
@@ -379,7 +339,7 @@ func (stg *userRepo) GetCouriesList(companyID string) ([]models.GetCouriesRespon
 		SELECT u.id, fullname 
 		FROM user_companies uc
 		INNER JOIN users u ON uc.user_id::text = u.id::text
-		WHERE uc.company_id::text = $1 AND uc.is_courier = true`, companyID)
+		WHERE uc.company_id::text = $1 AND uc.is_courier = true AND u.deleted_at IS NULL`, companyID)
 
 	if err != nil {
 		return nil, err
@@ -400,4 +360,33 @@ func (stg *userRepo) GetCouriesList(companyID string) ([]models.GetCouriesRespon
 	}
 
 	return result, nil
+}
+
+// Delete: soft delete. role_id tozalanadi (FK rolni o'chirishga to'sqinlik qilmasin),
+// permission_ids o'zgarmaydi.
+func (stg *userRepo) Delete(id int64, deletedBy int64) (int64, error) {
+	tx, err := stg.db.Beginx()
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+
+	res, err := tx.Exec(`update users set deleted_at = now(), deleted_by = $2, is_active = false, chat_id = null, updated_at = now()
+		where id = $1 and deleted_at is null`, id, deletedBy)
+	if err != nil {
+		return 0, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+
+	if _, err := tx.Exec(`update user_companies set role_id = null where user_id = $1`, id); err != nil {
+		return 0, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return n, nil
 }

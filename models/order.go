@@ -119,6 +119,7 @@ type Order struct {
 	Uuid                  string                `json:"uuid,omitempty"`
 	ClientID              int                   `json:"client_id,omitempty"`
 	CourierID             *int64                `json:"courier_id,omitempty"`
+	CourierName           *string               `json:"courier_name,omitempty"`
 	PhoneNumber           string                `json:"phone_number,omitempty"`
 	AdditionalPhoneNumber string                `json:"additional_phone_number,omitempty"`
 	WorkNumber            string                `json:"work_number,omitempty"`
