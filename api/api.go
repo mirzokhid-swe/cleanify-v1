@@ -4,6 +4,7 @@ import (
 	"bw-erp/api/handlers"
 	"bw-erp/api/middleware"
 	"bw-erp/config"
+	"log"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -12,6 +13,13 @@ import (
 func SetUpRouter(h handlers.Handler, cfg config.Config) (r *gin.Engine) {
 	r = gin.New()
 	r.Use(gin.Logger(), gin.Recovery())
+	// Har qanday xatolik (>=400, panic) Telegram guruhga (ERROR_BOT_TOKEN, ERROR_CHAT_ID).
+	r.Use(middleware.ErrorReport(cfg.Release_Mode, middleware.TelegramSender(cfg.ErrorBotToken, cfg.ErrorChatID)))
+	if cfg.ErrorBotToken != "" && cfg.ErrorChatID != "" {
+		log.Println("[error-report] telegram yoqiq, chat", cfg.ErrorChatID)
+	} else {
+		log.Println("[error-report] telegram o'chiq: ERROR_BOT_TOKEN yoki ERROR_CHAT_ID bo'sh")
+	}
 
 	r.Use(customCORSMiddleware())
 
@@ -63,6 +71,7 @@ func SetUpRouter(h handlers.Handler, cfg config.Config) (r *gin.Engine) {
 		orderRouter := baseRouter.Group("orders")
 		orderRouter.Use(middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg)).POST("", h.CreateOrderModel)
 		orderRouter.GET("", middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg), middleware.RequirePermission("get_orders_list"), h.GetOrdersList)
+		orderRouter.GET("/busy-slots", middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg), h.GetBusySlots)
 		orderRouter.Use(middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg)).GET("/:order-id", h.GetOrderByPrimaryKey)
 		orderRouter.Use(middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg)).POST("/edit", h.UpdateOrderModel)
 		orderRouter.Use(middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg)).POST("/set-price", h.SetOrderPrice)

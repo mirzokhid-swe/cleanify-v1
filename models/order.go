@@ -36,6 +36,8 @@ type CreateOrderModel struct {
 	IsNewClient bool    `json:"is_new_client"`
 	Latitute    float64 `json:"latitute"`
 	Longitude   float64 `json:"longitude"`
+	// Slots: joy raqamlari (storage_slots sozlamasi); edit'dagi kabi ValidateSlots.
+	Slots []string `json:"slots"`
 }
 
 type OrderList struct {
@@ -198,6 +200,12 @@ func ValidateSlots(slots []string) error {
 		seen[s] = true
 	}
 	return nil
+}
+
+// BusySlot: band joy. Holati 6 (Topshirildi) bo'lmagan buyurtmalarning joylari.
+type BusySlot struct {
+	OrderID int    `json:"order_id" db:"order_id"`
+	Slot    string `json:"slot" db:"slot"`
 }
 
 type AddOrderPaymentRequest struct {

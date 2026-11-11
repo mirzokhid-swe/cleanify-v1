@@ -61,9 +61,10 @@ func (stg *orderRepo) Create(userID int64, entity models.CreateOrderModel) (id i
 		address,
 		status,
 		client_id,
-		order_number
+		order_number,
+		slots
 	) VALUES (
-		$1, $2, $3, $4, $5, $6, $7, $8, $9
+		$1, $2, $3, $4, $5, $6, $7, $8, $9, $10
 	) RETURNING id`,
 		entity.CompanyID,
 		entity.Phone,
@@ -74,6 +75,7 @@ func (stg *orderRepo) Create(userID int64, entity models.CreateOrderModel) (id i
 		status,
 		entity.ClientID,
 		orderNumber,
+		pq.Array(entity.Slots),
 	).Scan(&id)
 
 	if err != nil {
@@ -632,4 +634,16 @@ func (stg *orderRepo) AddComment(entity models.CreateOrderComment) error {
 	)
 
 	return err
+}
+
+// GetBusySlots: korxonadagi holati 6 (Topshirildi) bo'lmagan buyurtmalarning
+// joylari, har joy alohida qator. Faqat ko'rsatish uchun: bitta joyda bir nechta
+// buyurtma turishi mumkin, shuning uchun band joy rad etilmaydi.
+func (stg *orderRepo) GetBusySlots(companyID string) ([]models.BusySlot, error) {
+	res := []models.BusySlot{}
+	err := stg.db.Select(&res, `select o.id as order_id, s as slot
+		from orders o, unnest(o.slots) s
+		where o.company_id = $1 and o.status <> 6
+		order by o.id`, companyID)
+	return res, err
 }

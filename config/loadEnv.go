@@ -20,6 +20,8 @@ type Config struct {
 	BotToken       string
 	Release_Mode   string
 	WEBHOOK_URL    string
+	ErrorBotToken  string // xatoliklar Telegram guruhga: ERROR_BOT_TOKEN, ERROR_CHAT_ID
+	ErrorChatID    string
 }
 
 func LoadConfig() (config Config, err error) {
@@ -41,6 +43,8 @@ func LoadConfig() (config Config, err error) {
 		BotToken:       cast.ToString(os.Getenv("BOT_TOKEN")),
 		Release_Mode:   cast.ToString(os.Getenv("RELEASE_MODE")),
 		WEBHOOK_URL:    cast.ToString(os.Getenv("WEBHOOK_URL")),
+		ErrorBotToken:  cast.ToString(os.Getenv("ERROR_BOT_TOKEN")),
+		ErrorChatID:    cast.ToString(os.Getenv("ERROR_CHAT_ID")),
 	}
 
 	return

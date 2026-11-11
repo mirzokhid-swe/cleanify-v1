@@ -22,4 +22,6 @@ type OrderI interface {
 	RecalcPaymentStatus(orderID int) error
 	AddComment(entity models.CreateOrderComment) error
 	GetByUuid(uuid string) (models.OrderReceipt, error)
+	// Band joylar: holati 6 (Topshirildi) bo'lmagan buyurtmalarning slots qiymatlari.
+	GetBusySlots(companyID string) ([]models.BusySlot, error)
 }

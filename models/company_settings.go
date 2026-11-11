@@ -36,6 +36,9 @@ var SettingsCatalog = map[string]SettingDef{
 	// Buyum qo'shishda "Soni" maydoni va uning eng katta qiymati.
 	"item_count_enabled": {Type: "bool", Default: true},
 	"item_count_max":     {Type: "int", Default: 20, Min: &one, Max: &hundred},
+	// Kuryer (user_companies.is_courier) buyum qo'shganda "Yuvilgan" belgisi
+	// standart holatda yoqiqmi. false bo'lsa kuryer uchun belgilanmagan ochiladi.
+	"courier_item_washed": {Type: "bool", Default: true},
 }
 
 // DefaultSettings returns every catalog key with its default as JSON.

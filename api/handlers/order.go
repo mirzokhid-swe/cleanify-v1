@@ -67,6 +67,11 @@ func (h *Handler) CreateOrderModel(c *gin.Context) {
 		return
 	}
 
+	if err := models.ValidateSlots(body.Slots); err != nil {
+		h.handleResponse(c, http.InvalidArgument, err.Error())
+		return
+	}
+
 	if body.ClientID != 0 {
 		client, _ := h.Stg.Client().GetByPrimaryKey(body.ClientID)
 		if client.ID == 0 {
@@ -479,4 +484,20 @@ func (h *Handler) AddOrderComment(c *gin.Context) {
 	}
 
 	h.handleResponse(c, http.Created, "Comment added to order successfully!")
+}
+
+// GetBusySlots: band joylar ro'yxati (storage_slots). Huquq tekshirilmaydi,
+// GET /orders/:order-id kabi. Javob: [{order_id, slot}].
+func (h *Handler) GetBusySlots(c *gin.Context) {
+	companyID := verifiedCompanyID(c, c.Query("company_id"))
+	if companyID == "" {
+		h.handleResponse(c, http.BadRequest, "company_id kerak")
+		return
+	}
+	data, err := h.Stg.Order().GetBusySlots(companyID)
+	if err != nil {
+		h.handleResponse(c, http.BadRequest, err.Error())
+		return
+	}
+	h.handleResponse(c, http.OK, data)
 }
