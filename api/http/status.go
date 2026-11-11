@@ -53,6 +53,23 @@ var (
 		Status:      "FORBIDDEN",
 		Description: "...",
 	}
+	// PermissionDenied is a 403 the front must not confuse with an expired token.
+	PermissionDenied = Status{
+		Code:        403,
+		Status:      "PERMISSION_DENIED",
+		Description: "Permission denied",
+	}
+	Conflict = Status{
+		Code:        409,
+		Status:      "CONFLICT",
+		Description: "Conflict",
+	}
+	// Locked: the company named by the request (or every company of the user) is blocked.
+	Locked = Status{
+		Code:        423,
+		Status:      "LOCKED",
+		Description: "company_blocked",
+	}
 	TooManyRequests = Status{
 		Code:        429,
 		Status:      "TOO_MANY_REQUESTS",

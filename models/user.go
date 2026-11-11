@@ -3,17 +3,37 @@ package models
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 )
 
+// ErrPhoneTaken: shu raqamli faol (o'chirilmagan) xodim bor (users_phone_active_key).
+var ErrPhoneTaken = errors.New("phone taken")
+
 type CreateUserModel struct {
-	Fullname    string `json:"fullname" binding:"required" minLength:"2" maxLength:"255" example:"John Doe"`
-	Phone       string `json:"phone" binding:"required" example:"991234567"`
-	CompanyID   string `json:"company_id" binding:"required"`
-	Permissions []struct {
-		CompanyID     string `json:"company_id" binding:"required"`
-		PermissionIDs []int  `json:"permission_ids"`
-		IsCourier     bool   `json:"is_courier" default:"false"`
-	} `json:"permissions"`
+	Fullname    string             `json:"fullname" binding:"required" minLength:"2" maxLength:"255" example:"John Doe"`
+	Phone       string             `json:"phone" binding:"required" example:"991234567"`
+	CompanyID   string             `json:"company_id" binding:"required"`
+	Permissions []UserCompanyInput `json:"permissions"`
+}
+
+// UserCompanyInput: RoleID berilsa huquqlar roldan olinadi (permission_ids ga tegilmaydi),
+// aks holda role_id = NULL va o'z permission_ids yoziladi.
+type UserCompanyInput struct {
+	CompanyID     string `json:"company_id" binding:"required"`
+	RoleID        *int64 `json:"role_id"`
+	PermissionIDs []int  `json:"permission_ids"`
+	IsCourier     bool   `json:"is_courier"`
+}
+
+type UserListItem struct {
+	ID            int64   `json:"id"`
+	Fullname      string  `json:"fullname"`
+	Phone         string  `json:"phone"`
+	IsActive      bool    `json:"is_active"`
+	IsCourier     bool    `json:"is_courier"`
+	RoleID        *int64  `json:"role_id"`
+	RoleName      *string `json:"role_name"`
+	PermissionIDs []int   `json:"permission_ids"`
 }
 
 type AuthUserModel struct {
@@ -28,6 +48,7 @@ type User struct {
 	Phone                   string                    `json:"phone"`
 	CompanyID               *string                   `json:"company_id"`
 	IsActive                bool                      `json:"is_active"`
+	IsSuperAdmin            bool                      `json:"is_super_admin"`
 	UserPermissionByCompany []UserPermissionByCompany `json:"user_permissions_by_company"`
 }
 
@@ -41,23 +62,26 @@ type GetCouriesListRequest struct {
 }
 
 type UserPermissionByCompany struct {
-	CompanyID     string `json:"company_id"`
-	CompanyName   string `json:"company_name"`
-	PermissionIDs []int  `json:"permission_ids"`
-	Can           string `json:"can"`
-	IsCourier     bool   `json:"is_courier"`
+	CompanyID     string          `json:"company_id"`
+	CompanyName   string          `json:"company_name"`
+	PermissionIDs []int           `json:"permission_ids"`
+	RoleID        *int64          `json:"role_id"`
+	RoleName      *string         `json:"role_name"`
+	Can           string          `json:"can"`
+	IsCourier     bool            `json:"is_courier"`
+	IsBlocked     bool            `json:"is_blocked"`
+	Settings      json.RawMessage `json:"settings"`
 }
 
 type UpdateUserRequest struct {
-	ID          string `json:"id" binding:"required"`
-	Fullname    string `json:"fullname"`
-	Phone       string `json:"phone"`
-	IsActive    *bool  `json:"is_active"`
-	Permissions []struct {
-		CompanyID     string `json:"company_id" binding:"required"`
-		PermissionIDs []int  `json:"permission_ids"`
-		IsCourier     bool   `json:"is_courier" default:"false"`
-	} `json:"permissions"`
+	ID          string             `json:"id" binding:"required"`
+	Fullname    string             `json:"fullname"`
+	Phone       string             `json:"phone"`
+	IsActive    *bool              `json:"is_active"`
+	Permissions []UserCompanyInput `json:"permissions"`
+	// ManageableCompanyIDs: chaqiruvchi edit_user ga ega korxonalar (handler to'ldiradi).
+	// Shulardan permissions[] da yo'qlarining user_companies qatori o'chiriladi.
+	ManageableCompanyIDs []string `json:"-"`
 }
 
 type GetUserListRequest struct {

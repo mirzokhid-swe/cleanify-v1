@@ -2,10 +2,13 @@ package handlers
 
 import (
 	"bw-erp/api/http"
+	"bw-erp/api/middleware"
 	"bw-erp/models"
 	"bw-erp/pkg/utils"
 	"bytes"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"log"
 	newHttp "net/http"
 	"os"
@@ -61,6 +64,11 @@ func (h *Handler) CreateOrderModel(c *gin.Context) {
 	_, err = h.Stg.Company().GetById(body.CompanyID)
 	if err != nil {
 		h.handleResponse(c, http.BadRequest, "company not found")
+		return
+	}
+
+	if err := models.ValidateSlots(body.Slots); err != nil {
+		h.handleResponse(c, http.InvalidArgument, err.Error())
 		return
 	}
 
@@ -155,7 +163,11 @@ func (h *Handler) GetOrdersList(c *gin.Context) {
 		return
 	}
 
-	data, err := h.Stg.Order().GetList(body.CompanyID, body)
+	data, err := h.Stg.Order().GetList(verifiedCompanyID(c, body.CompanyID), body)
+	if errors.Is(err, models.ErrBadDateRange) {
+		h.handleResponse(c, http.BadRequest, err.Error())
+		return
+	}
 	if err != nil {
 		h.handleResponse(c, http.BadRequest, err.Error())
 		return
@@ -194,32 +206,71 @@ func (h *Handler) SetOrderPrice(c *gin.Context) {
 	h.handleResponse(c, http.OK, "OK!")
 }
 
+// AddOrderPayment records a payment and returns {payment_status, total, paid, remaining}.
+// amount > remaining or ≤ 0 → 400 with the reason; a duplicate within 1 minute → 200, not stored.
 func (h *Handler) AddOrderPayment(c *gin.Context) {
 	var body models.AddOrderPaymentRequest
 	if err := c.ShouldBindJSON(&body); err != nil {
 		h.handleResponse(c, http.BadRequest, err.Error())
 		return
 	}
+	body.CompanyID = verifiedCompanyID(c, body.CompanyID)
 
-	jwtData, err := utils.ExtractTokenID(c)
+	summary, err := h.Stg.Order().AddPayment(currentUserID(c), body)
+	if errors.Is(err, sql.ErrNoRows) {
+		h.handleResponse(c, http.NOT_FOUND, "Order not found!")
+		return
+	}
+	if errors.Is(err, models.ErrPaymentAmount) {
+		h.handleResponse(c, http.BadRequest, err.Error())
+		return
+	}
 	if err != nil {
 		h.handleResponse(c, http.BadRequest, err.Error())
 		return
 	}
 
-	user, err := h.Stg.User().GetById(jwtData.UserID)
+	h.handleResponse(c, http.OK, summary)
+}
+
+// DeleteOrderTransaction soft-deletes one order payment. Allowed with delete_transaction
+// in the payment's company, or without it for a payment the user entered themselves
+// (receiver_id) while working in that company.
+func (h *Handler) DeleteOrderTransaction(c *gin.Context) {
+	transactionID, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		h.handleResponse(c, http.InvalidArgument, "id is not a number")
+		return
+	}
+
+	payment, err := h.Stg.Order().GetOrderPayment(transactionID)
+	if errors.Is(err, sql.ErrNoRows) {
+		h.handleResponse(c, http.NOT_FOUND, "Transaction not found!")
+		return
+	}
 	if err != nil {
 		h.handleResponse(c, http.BadRequest, err.Error())
 		return
 	}
 
-	err = h.Stg.Order().AddPayment(user.ID, body)
+	userID := currentUserID(c)
+	own := payment.ReceiverID == userID && middleware.UserInCompany(c, payment.CompanyID)
+	if !own && !middleware.UserCan(c, payment.CompanyID, "delete_transaction") {
+		h.handleResponse(c, http.PermissionDenied, "Permission denied")
+		return
+	}
+
+	summary, err := h.Stg.Order().DeleteTransaction(userID, transactionID, payment.CompanyID)
+	if errors.Is(err, sql.ErrNoRows) {
+		h.handleResponse(c, http.NOT_FOUND, "Transaction not found!")
+		return
+	}
 	if err != nil {
 		h.handleResponse(c, http.BadRequest, err.Error())
 		return
 	}
 
-	h.handleResponse(c, http.OK, "OK!")
+	h.handleResponse(c, http.OK, summary)
 }
 
 func (h *Handler) GetTransactionByOrder(c *gin.Context) {
@@ -250,6 +301,21 @@ func (h *Handler) UpdateOrderModel(c *gin.Context) {
 	if err != nil {
 		h.handleResponse(c, http.BadRequest, err.Error())
 		return
+	}
+
+	if body.PaymentStatus != 0 && !middleware.UserCan(c, order.CompanyID, "change_payment_status") {
+		h.handleResponse(c, http.PermissionDenied, "Permission denied")
+		return
+	}
+	if body.CourierID != nil && *body.CourierID < 0 {
+		h.handleResponse(c, http.InvalidArgument, "courier_id is invalid")
+		return
+	}
+	if body.Slots != nil {
+		if err := models.ValidateSlots(*body.Slots); err != nil {
+			h.handleResponse(c, http.InvalidArgument, err.Error())
+			return
+		}
 	}
 
 	oldOrderStatus := order.Status
@@ -341,10 +407,12 @@ func (h *Handler) UpdateOrderModel(c *gin.Context) {
 	}
 
 	isCourierChanged := false
-	if oldCourierID == nil {
-		isCourierChanged = body.CourierID != 0
-	} else {
-		isCourierChanged = body.CourierID != *oldCourierID
+	if body.CourierID != nil {
+		if oldCourierID == nil {
+			isCourierChanged = *body.CourierID != 0
+		} else {
+			isCourierChanged = *body.CourierID != *oldCourierID
+		}
 	}
 
 	if isCourierChanged {
@@ -416,4 +484,20 @@ func (h *Handler) AddOrderComment(c *gin.Context) {
 	}
 
 	h.handleResponse(c, http.Created, "Comment added to order successfully!")
+}
+
+// GetBusySlots: band joylar ro'yxati (storage_slots). Huquq tekshirilmaydi,
+// GET /orders/:order-id kabi. Javob: [{order_id, slot}].
+func (h *Handler) GetBusySlots(c *gin.Context) {
+	companyID := verifiedCompanyID(c, c.Query("company_id"))
+	if companyID == "" {
+		h.handleResponse(c, http.BadRequest, "company_id kerak")
+		return
+	}
+	data, err := h.Stg.Order().GetBusySlots(companyID)
+	if err != nil {
+		h.handleResponse(c, http.BadRequest, err.Error())
+		return
+	}
+	h.handleResponse(c, http.OK, data)
 }

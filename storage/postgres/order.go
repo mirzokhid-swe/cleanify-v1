@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/jmoiron/sqlx"
+	"github.com/lib/pq"
 )
 
 type orderRepo struct {
@@ -60,9 +61,10 @@ func (stg *orderRepo) Create(userID int64, entity models.CreateOrderModel) (id i
 		address,
 		status,
 		client_id,
-		order_number
+		order_number,
+		slots
 	) VALUES (
-		$1, $2, $3, $4, $5, $6, $7, $8, $9
+		$1, $2, $3, $4, $5, $6, $7, $8, $9, $10
 	) RETURNING id`,
 		entity.CompanyID,
 		entity.Phone,
@@ -73,6 +75,7 @@ func (stg *orderRepo) Create(userID int64, entity models.CreateOrderModel) (id i
 		status,
 		entity.ClientID,
 		orderNumber,
+		pq.Array(entity.Slots),
 	).Scan(&id)
 
 	if err != nil {
@@ -97,120 +100,6 @@ func (stg *orderRepo) Create(userID int64, entity models.CreateOrderModel) (id i
 	}
 
 	return id, nil
-}
-
-func (stg *orderRepo) GetList(companyID string, queryParam models.OrdersListRequest) (res models.OrderListResponse, err error) {
-	var arr []interface{}
-	res = models.OrderListResponse{}
-	params := make(map[string]interface{})
-	query := `SELECT 
-		o.id,
-		o.status, 
-		o.address,
-		o.created_at,
-		o.phone,
-		o.order_number,
-		COALESCE(o.courier_id, null) as courier_id, 
-		ROUND(CAST(COALESCE(sum(oi.price*oi.width*oi.height), 0) AS NUMERIC), 2) as price
-		FROM "orders" as o 
-		left join order_items oi on o.id = oi.order_id
-		left join order_statuses os on os.number = o.status and os.company_id = o.company_id`
-
-	filter := " WHERE true"
-	group := " group by o.id, o.status, o.address, o.created_at, o.phone, o.courier_id, os.order"
-	order := " ORDER BY os.order ASC, o.created_at desc"
-	offset := " OFFSET 0"
-	limit := " LIMIT 20"
-
-	params["company_id"] = companyID
-	filter += " and (o.company_id = :company_id)"
-
-	if len(queryParam.Search) >= 3 {
-		params["search"] = queryParam.Search
-		filter += "AND (o.order_number ILIKE ('%' || :search || '%') OR o.phone ILIKE ('%' || :search || '%') OR o.address ILIKE ('%' || :search || '%'))"
-	}
-
-	if queryParam.Status != 0 {
-		params["status"] = queryParam.Status
-		filter += " AND (o.status = :status)"
-	}
-
-	if queryParam.PaymentStatus != 0 {
-		params["payment_status"] = queryParam.PaymentStatus
-		filter += " AND (o.payment_status = :payment_status)"
-	}
-
-	if queryParam.CourierID != "" {
-		params["courier_id"] = queryParam.CourierID
-		filter += " AND (o.courier_id = :courier_id)"
-	}
-
-	if !queryParam.DateFrom.IsZero() {
-		params["date_from"] = queryParam.DateFrom
-		filter += " AND (o.created_at >= :date_from::date)"
-	}
-
-	if !queryParam.DateTo.IsZero() {
-		params["date_to"] = queryParam.DateTo
-		filter += " AND (o.created_at <= :date_to::date)"
-	}
-
-	if queryParam.Offset > 0 {
-		params["offset"] = queryParam.Offset
-		offset = " OFFSET :offset"
-	}
-
-	// if queryParam.Limit > 0 {
-	// 	params["limit"] = queryParam.Limit
-	// 	limit = " LIMIT :limit"
-	// }
-
-	params["limit"] = 150
-	limit = " LIMIT :limit"
-
-	cQ := `SELECT count(1) FROM "orders" as o` + filter
-	cQ, arr = helper.ReplaceQueryParams(cQ, params)
-	err = stg.db.QueryRow(cQ, arr...).Scan(
-		&res.Count,
-	)
-
-	if err != nil {
-		return res, err
-	}
-
-	q := query + filter + group + order + offset + limit
-
-	q, arr = helper.ReplaceQueryParams(q, params)
-	rows, err := stg.db.Query(q, arr...)
-
-	if err != nil {
-		return res, err
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var order models.OrderList
-		err = rows.Scan(
-			&order.ID,
-			&order.Status,
-			&order.Address,
-			&order.CreatedAt,
-			&order.Phone,
-			&order.OrderNumber,
-			&order.CourierID,
-			&order.Price,
-		)
-		if err != nil {
-			return res, err
-		}
-		res.Data = append(res.Data, order)
-	}
-
-	if err = rows.Err(); err != nil {
-		return res, err
-	}
-
-	return res, nil
 }
 
 func (stg *orderRepo) GetByStatus(companyID string, Status int) (order []models.Order, err error) {
@@ -284,11 +173,15 @@ func (stg *orderRepo) GetDetailedByPrimaryKey(ID int) (models.OrderShowResponse,
 									coalesce(o.discounted_price, 0),
 									coalesce(round(sum(oi.width * oi.height * oi.price)::numeric, 2), 0) as price,
 									COALESCE(o.courier_id, null) as courier_id,
+									cu.fullname as courier_name,
 									o.created_at,
-									o.updated_at 
+									o.updated_at,
+									coalesce((select sum(t.amount) from transactions t where t.payer_type = 'orders' and t.payer_id = o.id and t.deleted_at is null), 0) as paid,
+									o.slots
 								from orders o
 								left join clients c on o.client_id = c.id 
 								left join order_items oi on oi.order_id = o.id
+								left join users cu on cu.id = o.courier_id
 								where o.id = $1 group by 
 									o.id, 
 									o.company_id, 
@@ -309,7 +202,9 @@ func (stg *orderRepo) GetDetailedByPrimaryKey(ID int) (models.OrderShowResponse,
 									o.discount_percentage,
 									o.discounted_price,
 									o.created_at,
-									o.updated_at `, ID).Scan(
+									o.updated_at,
+									o.slots,
+									cu.fullname `, ID).Scan(
 		&order.ID,
 		&order.CompanyID,
 		&order.PhoneNumber,
@@ -330,14 +225,17 @@ func (stg *orderRepo) GetDetailedByPrimaryKey(ID int) (models.OrderShowResponse,
 		&order.DiscountPrice,
 		&order.Price,
 		&order.CourierID,
+		&order.CourierName,
 		&order.CreatedAt,
 		&order.UpdatedAt,
+		&order.Paid,
+		pq.Array(&order.Slots),
 	)
 	if err != nil {
 		return order, err
 	}
 
-	rows, err := stg.db.Query(`select id, order_id, type, price, width, height, status, is_countable, description, order_item_type_id from order_items where order_id = $1 order by created_at`, ID)
+	rows, err := stg.db.Query(`select id, order_id, type, price, width, height, status, is_countable, description, order_item_type_id, unit from order_items where order_id = $1 order by created_at`, ID)
 
 	if err != nil {
 		return order, err
@@ -346,7 +244,7 @@ func (stg *orderRepo) GetDetailedByPrimaryKey(ID int) (models.OrderShowResponse,
 
 	for rows.Next() {
 		var item models.OrderItem
-		if err := rows.Scan(&item.ID, &item.OrderID, &item.Type, &item.Price, &item.Width, &item.Height, &item.OrderItemStatus, &item.IsCountable, &item.Description, &item.OrderItemTypeID); err != nil {
+		if err := rows.Scan(&item.ID, &item.OrderID, &item.Type, &item.Price, &item.Width, &item.Height, &item.OrderItemStatus, &item.IsCountable, &item.Description, &item.OrderItemTypeID, &item.Unit); err != nil {
 			return order, err
 		}
 		data, err := stg.db.Query(`select sch.status, u.fullname, sch.created_at from status_change_histories sch inner join users u on u.id = sch.user_id where historyable_type = 'order_items' and historyable_id = $1 order by created_at desc`, item.ID)
@@ -379,9 +277,12 @@ func (stg *orderRepo) GetDetailedByPrimaryKey(ID int) (models.OrderShowResponse,
 		order.StatusChangeHistory = append(order.StatusChangeHistory, history)
 	}
 
-	transactions, err := stg.db.Query(`select u.fullname, t.payment_type, t.amount, t.created_at from transactions t
+	transactions, err := stg.db.Query(`select t.id, t.receiver_id, u.fullname, t.payment_type, t.amount, t.created_at, t.deleted_at, du.fullname
+									from transactions t
 									inner join users u on t.receiver_type = 'users' and t.receiver_id = u.id
-									where payer_type = 'orders' and payer_id = $1`, order.ID)
+									left join users du on du.id = t.deleted_by
+									where t.payer_type = 'orders' and t.payer_id = $1
+									order by t.created_at`, order.ID)
 	if err != nil {
 		return order, err
 	}
@@ -389,7 +290,7 @@ func (stg *orderRepo) GetDetailedByPrimaryKey(ID int) (models.OrderShowResponse,
 
 	for transactions.Next() {
 		var transaction models.OrderTransaction
-		if err := transactions.Scan(&transaction.ReceiverFullname, &transaction.PaymentType, &transaction.Amount, &transaction.CreatedAt); err != nil {
+		if err := transactions.Scan(&transaction.ID, &transaction.ReceiverID, &transaction.ReceiverFullname, &transaction.PaymentType, &transaction.Amount, &transaction.CreatedAt, &transaction.DeletedAt, &transaction.DeletedByFullname); err != nil {
 			return order, err
 		}
 		order.OrderTransaction = append(order.OrderTransaction, transaction)
@@ -559,13 +460,20 @@ func (stg *orderRepo) Update(userID int64, entity *models.UpdateOrderRequest) (r
 	}
 
 	if entity.PaymentStatus != 0 {
-		query += `payment_status = :payment_status,`
+		// Set by hand: the automatic recalc leaves it alone until money changes.
+		query += `payment_status = :payment_status, payment_status_manual = true,`
 	}
 
-	if entity.CourierID != 0 {
-		query += `courier_id = :courier_id,`
-	} else {
-		query += `courier_id = NULL,`
+	if entity.CourierID != nil {
+		if *entity.CourierID == 0 {
+			query += `courier_id = NULL,`
+		} else {
+			query += `courier_id = :courier_id,`
+		}
+	}
+
+	if entity.Slots != nil {
+		query += `slots = :slots,`
 	}
 
 	query += `updated_at = now()
@@ -588,6 +496,14 @@ func (stg *orderRepo) Update(userID int64, entity *models.UpdateOrderRequest) (r
 		}
 	}
 
+	var courierID int64
+	if entity.CourierID != nil {
+		courierID = *entity.CourierID
+	}
+	var slots []string
+	if entity.Slots != nil {
+		slots = *entity.Slots
+	}
 	params := map[string]interface{}{
 		"id":               entity.ID,
 		"status":           entity.Status,
@@ -599,7 +515,8 @@ func (stg *orderRepo) Update(userID int64, entity *models.UpdateOrderRequest) (r
 		"latitute":         entity.Latitute,
 		"longitude":        entity.Longitude,
 		"payment_status":   entity.PaymentStatus,
-		"courier_id":       entity.CourierID,
+		"courier_id":       courierID,
+		"slots":            pq.Array(slots),
 		"discounted_price": entity.DiscountedPrice,
 	}
 
@@ -692,102 +609,6 @@ func (stg *orderRepo) SetOrderPrice(entity models.SetOrderPriceRequest) error {
 	return nil
 }
 
-func (stg *orderRepo) AddPayment(userID int64, entity models.AddOrderPaymentRequest) error {
-	var paymentPurposeId int
-
-	// Prevent duplicate payment within 1 minute by the same user for the same order and amount
-	var exists bool
-	err := stg.db.QueryRow(`
-        SELECT EXISTS(
-            SELECT 1
-            FROM transactions
-            WHERE company_id = $1
-              AND payer_type = 'orders'
-              AND payer_id::int = $2
-              AND receiver_type = 'users'
-              AND receiver_id = $3
-              AND amount = $4
-              AND created_at >= now() - interval '1 minute'
-        )`, entity.CompanyID, entity.OrderID, userID, entity.Amount).Scan(&exists)
-	if err != nil {
-		return err
-	}
-	if exists {
-		// Considered success: duplicate within 1 minute is ignored
-		return nil
-	}
-
-	err = stg.db.QueryRow(`select id from payment_purposes where slug = 'orders' and company_id = $1`, entity.CompanyID).Scan(
-		&paymentPurposeId,
-	)
-
-	if err != nil {
-		return err
-	}
-
-	_, err = stg.db.Exec(`INSERT INTO transactions(
-		company_id,
-		payer_id,
-		payer_type,
-		amount,
-		receiver_id,
-		receiver_type,
-		payment_type,
-		payment_purpose_id,
-		description
-	) VALUES (
-		$1,
-		$2,
-		$3,
-		$4,
-		$5,
-		$6,
-		$7,
-		$8,
-		$9
-	)`,
-		entity.CompanyID,
-		entity.OrderID,
-		"orders",
-		entity.Amount,
-		userID,
-		"users",
-		entity.PaymentType,
-		paymentPurposeId,
-		&entity.Description,
-	)
-
-	if err != nil {
-		return err
-	}
-
-	var PaidAmount float64
-
-	err = stg.db.QueryRow(`select sum(amount) from transactions where payer_type = 'orders' and payer_id::int = $1`, entity.OrderID).Scan(&PaidAmount)
-
-	if err != nil {
-		return err
-	}
-
-	// var ServicePrice float64
-
-	// err = stg.db.QueryRow(`select discounted_price from orders where id = $1`, entity.OrderID).Scan(&ServicePrice)
-
-	// if err != nil {
-	// 	return err
-	// }
-
-	// if PaidAmount == ServicePrice {
-	// 	var payment_status models.PaymentStatus = models.Paid
-	// 	stg.db.Query(`UPDATE "orders" SET payment_status = $1 where id = $2`, payment_status, entity.OrderID)
-	// } else {
-	// 	var payment_status models.PaymentStatus = models.Partial
-	// 	stg.db.Query(`UPDATE "orders" SET payment_status = $1 where id = $2`, payment_status, entity.OrderID)
-	// }
-
-	return nil
-}
-
 func (stg *orderRepo) AddComment(entity models.CreateOrderComment) error {
 	query := `
 		INSERT INTO comments (
@@ -813,4 +634,16 @@ func (stg *orderRepo) AddComment(entity models.CreateOrderComment) error {
 	)
 
 	return err
+}
+
+// GetBusySlots: korxonadagi holati 6 (Topshirildi) bo'lmagan buyurtmalarning
+// joylari, har joy alohida qator. Faqat ko'rsatish uchun: bitta joyda bir nechta
+// buyurtma turishi mumkin, shuning uchun band joy rad etilmaydi.
+func (stg *orderRepo) GetBusySlots(companyID string) ([]models.BusySlot, error) {
+	res := []models.BusySlot{}
+	err := stg.db.Select(&res, `select o.id as order_id, s as slot
+		from orders o, unnest(o.slots) s
+		where o.company_id = $1 and o.status <> 6
+		order by o.id`, companyID)
+	return res, err
 }

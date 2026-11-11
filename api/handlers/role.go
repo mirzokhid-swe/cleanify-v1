@@ -2,122 +2,138 @@ package handlers
 
 import (
 	"bw-erp/api/http"
+	"bw-erp/api/middleware"
 	"bw-erp/models"
-	"bw-erp/pkg/utils"
+	"database/sql"
+	"errors"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 )
 
-func (h *Handler) CreateRoleModel(c *gin.Context) {
-	var body models.CreateRoleModel
+// canReadRoles: rollar ro'yxati xodim formasi va rollar sahifasi uchun kerak.
+func canReadRoles(c *gin.Context, companyID string) bool {
+	for _, slug := range []string{"get_users_list", "user_create", "edit_user", "manage_roles"} {
+		if middleware.UserCan(c, companyID, slug) {
+			return true
+		}
+	}
+	return false
+}
+
+func (h *Handler) GetRoles(c *gin.Context) {
+	companyID := c.Query("company_id")
+	if !canReadRoles(c, companyID) {
+		h.handleResponse(c, http.PermissionDenied, nil)
+		return
+	}
+
+	roles, err := h.Stg.Role().GetList(companyID)
+	if err != nil {
+		h.handleResponse(c, http.InternalServerError, err.Error())
+		return
+	}
+	h.handleResponse(c, http.OK, roles)
+}
+
+func (h *Handler) GetRole(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		h.handleResponse(c, http.BadRequest, err.Error())
+		return
+	}
+	companyID := c.Query("company_id")
+	if !canReadRoles(c, companyID) {
+		h.handleResponse(c, http.PermissionDenied, nil)
+		return
+	}
+
+	role, err := h.Stg.Role().GetByID(id, companyID)
+	if errors.Is(err, sql.ErrNoRows) {
+		h.handleResponse(c, http.NOT_FOUND, "role not found")
+		return
+	}
+	if err != nil {
+		h.handleResponse(c, http.InternalServerError, err.Error())
+		return
+	}
+	h.handleResponse(c, http.OK, role)
+}
+
+func (h *Handler) CreateRole(c *gin.Context) {
+	var body models.RoleInput
 	if err := c.ShouldBindJSON(&body); err != nil {
 		h.handleResponse(c, http.BadRequest, err.Error())
 		return
 	}
+	body.CompanyID = c.GetString("company_id")
 
-	_, err := h.Stg.Company().GetById(body.CompanyId)
-	if err != nil {
-		h.handleResponse(c, http.BadRequest, err.Error())
+	id, err := h.Stg.Role().Create(body)
+	if errors.Is(err, models.ErrRoleNameTaken) {
+		h.handleResponse(c, http.Conflict, "Bu nom band")
 		return
 	}
-	// token, err := utils.ExtractTokenID(c)
-
-	// if err != nil {
-	// 	h.handleResponse(c, http.BadRequest, err.Error())
-	// 	return
-	// }
-
-	// user, err := h.Stg.GetUserById(token.UserID)
-	// if err != nil {
-	// 	h.handleResponse(c, http.BadRequest, err.Error())
-	// 	return
-	// }
-
-	// body.CompanyId = *user.CompanyID
-	id := uuid.New()
-
-	err = h.Stg.Role().Create(id.String(), body)
 	if err != nil {
-		h.handleResponse(c, http.BadRequest, err.Error())
+		h.handleResponse(c, http.InternalServerError, err.Error())
 		return
 	}
-
-	h.handleResponse(c, http.Created, id)
+	h.handleResponse(c, http.Created, gin.H{"id": id})
 }
 
-func (h *Handler) GetRolesListByCompany(c *gin.Context) {
-	companyID := c.Param("company-id")
-	if !utils.IsValidUUID(companyID) {
-		h.handleResponse(c, http.InvalidArgument, "company id is an invalid uuid")
-		return
-	}
-
-	token, err := utils.ExtractTokenID(c)
-
+func (h *Handler) UpdateRole(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
 		h.handleResponse(c, http.BadRequest, err.Error())
 		return
 	}
-
-	_, err = h.Stg.User().GetById(token.UserID)
-	if err != nil {
-		h.handleResponse(c, http.BadRequest, err.Error())
-		return
-	}
-
-	data, err := h.Stg.Role().GetListByCompany(companyID)
-	if err != nil {
-		h.handleResponse(c, http.BadRequest, err.Error())
-		return
-	}
-
-	h.handleResponse(c, http.OK, data)
-}
-
-func (h *Handler) GetPermissionsToRole(c *gin.Context) {
-	var body models.GetPermissionToRoleRequest
+	var body models.RoleInput
 	if err := c.ShouldBindJSON(&body); err != nil {
 		h.handleResponse(c, http.BadRequest, err.Error())
 		return
 	}
+	body.CompanyID = c.GetString("company_id")
 
-	token, err := utils.ExtractTokenID(c)
-
-	if err != nil {
-		h.handleResponse(c, http.BadRequest, err.Error())
+	rows, err := h.Stg.Role().Update(id, body)
+	if errors.Is(err, models.ErrRoleNameTaken) {
+		h.handleResponse(c, http.Conflict, "Bu nom band")
 		return
 	}
-
-	user, err := h.Stg.User().GetById(token.UserID)
 	if err != nil {
-		h.handleResponse(c, http.BadRequest, err.Error())
+		h.handleResponse(c, http.InternalServerError, err.Error())
 		return
 	}
-
-	body.CompanyID = *user.CompanyID
-
-	err = h.Stg.Role().GetPermissionsToRole(body)
-	if err != nil {
-		h.handleResponse(c, http.BadRequest, err.Error())
+	if rows == 0 {
+		h.handleResponse(c, http.NOT_FOUND, "role not found")
 		return
 	}
-
-	h.handleResponse(c, http.OK, "Success!")
+	h.handleResponse(c, http.OK, true)
 }
 
-func (h *Handler) GetRoleByPrimaryKey(c *gin.Context) {
-	roleID := c.Param("role-id")
-	if !utils.IsValidUUID(roleID) {
-		h.handleResponse(c, http.InvalidArgument, "role id is an invalid uuid")
-		return
-	}
-
-	data, err := h.Stg.Role().GetByPrimaryKey(roleID)
+func (h *Handler) DeleteRole(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
 		h.handleResponse(c, http.BadRequest, err.Error())
 		return
 	}
+	companyID := c.GetString("company_id")
 
-	h.handleResponse(c, http.OK, data)
+	rows, err := h.Stg.Role().Delete(id, companyID)
+	if errors.Is(err, models.ErrRoleInUse) {
+		role, err := h.Stg.Role().GetByID(id, companyID)
+		if err != nil {
+			h.handleResponse(c, http.InternalServerError, err.Error())
+			return
+		}
+		h.handleResponse(c, http.Conflict, gin.H{"users_count": role.UsersCount})
+		return
+	}
+	if err != nil {
+		h.handleResponse(c, http.InternalServerError, err.Error())
+		return
+	}
+	if rows == 0 {
+		h.handleResponse(c, http.NOT_FOUND, "role not found")
+		return
+	}
+	h.handleResponse(c, http.OK, true)
 }

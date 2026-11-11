@@ -2,30 +2,27 @@ package handlers
 
 import (
 	"bw-erp/api/http"
+	"bw-erp/models"
 
 	"github.com/gin-gonic/gin"
 )
 
 func (h *Handler) GetPermissionList(c *gin.Context) {
-	// token, err := utils.ExtractTokenID(c)
-
-	// if err != nil {
-	// 	h.handleResponse(c, http.BadRequest, err.Error())
-	// 	return
-	// }
-
-	// user, err := h.Stg.User().GetById(token.UserID)
-
-	// if err != nil {
-	// 	h.handleResponse(c, http.BadRequest, err.Error())
-	// 	return
-	// }
-
-	data, err := h.Stg.Permission().GetList("company")
+	perms, err := h.Stg.Permission().GetList("company")
 	if err != nil {
 		h.handleResponse(c, http.BadRequest, err.Error())
 		return
 	}
 
-	h.handleResponse(c, http.OK, data)
+	// company_id is optional: with it, status permissions get the company's own status names.
+	var statuses []models.OrderStatus
+	if companyID := c.Query("company_id"); companyID != "" {
+		statuses, err = h.Stg.OrderStatus().GetList(companyID, "number", "asc")
+		if err != nil {
+			h.handleResponse(c, http.BadRequest, err.Error())
+			return
+		}
+	}
+
+	h.handleResponse(c, http.OK, models.GroupPermissions(perms, statuses))
 }

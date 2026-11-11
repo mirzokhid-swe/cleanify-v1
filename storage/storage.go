@@ -51,7 +51,7 @@ type storagePg struct {
 	notificationSetting repo.NotificationSettingI
 	notification        repo.NotificationI
 	comment             repo.CommentStorageI
-	webPush            repo.WebPushStorageI
+	webPush             repo.WebPushStorageI
 }
 
 func NewStoragePg(db *sqlx.DB) StorageI {
@@ -75,7 +75,7 @@ func NewStoragePg(db *sqlx.DB) StorageI {
 		notificationSetting: postgres.NewNotificationSettingRepo(db),
 		notification:        postgres.NewNotificationRepo(db),
 		comment:             postgres.NewCommentRepo(db),
-		webPush:            postgres.NewWebPushRepo(db),
+		webPush:             postgres.NewWebPushRepo(db),
 	}
 }
 

@@ -4,8 +4,11 @@ import (
 	"bw-erp/api/http"
 	"bw-erp/models"
 	"bw-erp/pkg/utils"
+	"database/sql"
+	"errors"
 	"fmt"
 	"os"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt"
@@ -71,16 +74,40 @@ func (h *Handler) RefreshToken(c *gin.Context) {
 		h.handleResponse(c, http.BadRequest, "Token ma'lumotlarini olishda xatolik")
 		return
 	}
-	user, err := h.Stg.User().GetByPhone(claims["phone"].(string))
+
+	// xodim token egasi (sub) bo'yicha topiladi; o'chirilgan xodim → 401
+	var userID int64
+	switch sub := claims["sub"].(type) {
+	case string:
+		userID, err = strconv.ParseInt(sub, 10, 64)
+	case float64:
+		userID = int64(sub)
+	default:
+		err = fmt.Errorf("sub yo'q")
+	}
 	if err != nil {
-		h.handleResponse(c, http.BadRequest, "Foydalanuvchi topilmadi")
+		h.handleResponse(c, http.Unauthorized, "Foydalanuvchi topilmadi")
+		return
+	}
+	user, err := h.Stg.User().GetById(userID)
+	if errors.Is(err, sql.ErrNoRows) {
+		h.handleResponse(c, http.Unauthorized, "Foydalanuvchi topilmadi")
+		return
+	}
+	if err != nil {
+		h.handleResponse(c, http.InternalServerError, err.Error())
 		return
 	}
 
-	phone, _ := claims["phone"].(string)
+	// tokendagi raqam xodimning hozirgi raqami bilan bir xil bo'lishi shart
+	phone, hasPhone := claims["phone"].(string)
+	if hasPhone && phone != user.Phone {
+		h.handleResponse(c, http.Unauthorized, "Foydalanuvchi topilmadi")
+		return
+	}
 
 	var response models.AuthorizationResponse
-	accessToken, refreshToken, err := utils.GenerateToken(user.ID, phone)
+	accessToken, refreshToken, err := utils.GenerateToken(strconv.FormatInt(user.ID, 10), user.Phone)
 	if err != nil {
 		fmt.Printf("Error generating new tokens: %v\n", err)
 		h.handleResponse(c, http.BadRequest, err.Error())

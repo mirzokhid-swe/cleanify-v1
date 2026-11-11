@@ -4,6 +4,7 @@ import (
 	"bw-erp/api/handlers"
 	"bw-erp/api/middleware"
 	"bw-erp/config"
+	"log"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -12,6 +13,13 @@ import (
 func SetUpRouter(h handlers.Handler, cfg config.Config) (r *gin.Engine) {
 	r = gin.New()
 	r.Use(gin.Logger(), gin.Recovery())
+	// Har qanday xatolik (>=400, panic) Telegram guruhga (ERROR_BOT_TOKEN, ERROR_CHAT_ID).
+	r.Use(middleware.ErrorReport(cfg.Release_Mode, middleware.TelegramSender(cfg.ErrorBotToken, cfg.ErrorChatID)))
+	if cfg.ErrorBotToken != "" && cfg.ErrorChatID != "" {
+		log.Println("[error-report] telegram yoqiq, chat", cfg.ErrorChatID)
+	} else {
+		log.Println("[error-report] telegram o'chiq: ERROR_BOT_TOKEN yoki ERROR_CHAT_ID bo'sh")
+	}
 
 	r.Use(customCORSMiddleware())
 
@@ -23,9 +31,11 @@ func SetUpRouter(h handlers.Handler, cfg config.Config) (r *gin.Engine) {
 		{
 			authRouter := baseRouter.Group("/auth")
 			// authRouter.POST("/login", h.AuthUser)
-			authRouter.Use(middleware.UserActiveMiddleware(h.Stg)).POST("/me", h.CurrentUser)
+			// Middleware har yo'lga alohida: group.Use to'planib, refresh-token ga ham
+			// token tekshiruvini qo'shib qo'yardi (muddati o'tgan token bilan refresh 403).
+			authRouter.POST("/me", middleware.UserActiveMiddleware(h.Stg), h.CurrentUser)
 			authRouter.POST("/refresh-token", h.RefreshToken)
-			authRouter.Use(middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg)).POST("/change-password", h.ChangePassword)
+			authRouter.POST("/change-password", middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg), h.ChangePassword)
 		}
 
 		notificationRouter := baseRouter.Group("/notifications")
@@ -47,35 +57,27 @@ func SetUpRouter(h handlers.Handler, cfg config.Config) (r *gin.Engine) {
 			notificationRouter.Use(middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg)).GET("/unread-notifications-count", h.UnreadNotificationsCount)
 		}
 
-		usersRouter := baseRouter.Group("/users")
-		usersRouter.Use(middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg)).POST("", h.Create)
-		usersRouter.Use(middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg)).GET("", h.GetList)
-		usersRouter.Use(middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg)).POST("/edit", h.Edit)
-		usersRouter.Use(middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg)).GET("/:user-id", h.GetById)
-		usersRouter.Use(middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg)).GET("/couriers", h.GetCouriesList)
-
-		usersRouter.Use(middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg)).POST("/employees", h.CreateEmployee)
-		usersRouter.Use(middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg)).GET("/employees", h.GetEmployeeList)
-		usersRouter.Use(middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg)).GET("/employees/show", h.ShowEmployeeDetailedData)
-		usersRouter.Use(middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg)).POST("/employees/add-transaction", h.AddTransaction)
-		usersRouter.Use(middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg)).POST("/employees/attendance", h.Attendance)
+		usersRoutes(baseRouter.Group("/users"), &h, middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg))
+		rolesRoutes(baseRouter.Group("/roles"), &h, middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg))
 	}
 
 	baseRouter.Static("/uploads", "./uploads")
 
 	{
-		companyRouter := baseRouter.Group("/company")
-		companyRouter.Use(middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg)).POST("", h.CreateCompanyModel)
+		companyRoutes(baseRouter.Group("/company"), &h, middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg))
 	}
 
 	{
 		orderRouter := baseRouter.Group("orders")
 		orderRouter.Use(middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg)).POST("", h.CreateOrderModel)
-		orderRouter.Use(middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg)).GET("", h.GetOrdersList)
+		orderRouter.GET("", middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg), middleware.RequirePermission("get_orders_list"), h.GetOrdersList)
+		orderRouter.GET("/busy-slots", middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg), h.GetBusySlots)
 		orderRouter.Use(middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg)).GET("/:order-id", h.GetOrderByPrimaryKey)
 		orderRouter.Use(middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg)).POST("/edit", h.UpdateOrderModel)
 		orderRouter.Use(middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg)).POST("/set-price", h.SetOrderPrice)
-		orderRouter.Use(middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg)).POST("add-payment", h.AddOrderPayment)
+		orderRouter.POST("add-payment", middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg), middleware.RequirePermission("add_payment"), h.AddOrderPayment)
+		// huquq handler'da: delete_transaction yoki o'zi kiritgan to'lov
+		orderRouter.DELETE("/transactions/:id", middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg), h.DeleteOrderTransaction)
 		orderRouter.Use(middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg)).GET("get-transactions-by-order", h.GetTransactionByOrder)
 		orderRouter.Use(middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg)).DELETE("", h.DeleteOrder)
 		orderRouter.Use(middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg)).POST("/comment", h.AddOrderComment)
@@ -97,19 +99,11 @@ func SetUpRouter(h handlers.Handler, cfg config.Config) (r *gin.Engine) {
 	}
 
 	{
-		orderItemRouter := baseRouter.Group("order-items")
-		orderItemRouter.Use(middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg)).POST("", h.CreateOrderItemModel)
-		orderItemRouter.Use(middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg)).POST("edit", h.UpdateOrderItemModel)
-		orderItemRouter.Use(middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg)).DELETE("/:id", h.DeleteOrderItemByID)
-		orderItemRouter.Use(middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg)).POST("/edit-status", h.UpdateOrderItemStatus)
+		orderItemRoutes(baseRouter.Group("order-items"), &h, middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg))
 	}
 
 	{
-		orderItemTypeRouter := baseRouter.Group("order-item-type")
-		orderItemTypeRouter.Use(middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg)).POST("", h.CreateOrderItemTypeModel)
-		orderItemTypeRouter.Use(middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg)).GET("", h.GetOrderItemTypesByCompany) //
-		orderItemTypeRouter.Use(middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg)).PUT("", h.UpdateOrderItemType)
-		orderItemTypeRouter.Use(middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg)).GET("get-by-primary-key/:id", h.GetOrderItemTypeByID)
+		orderItemTypeRoutes(baseRouter.Group("order-item-type"), &h, middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg))
 	}
 
 	{
@@ -162,4 +156,85 @@ func customCORSMiddleware() gin.HandlerFunc {
 
 		c.Next()
 	}
+}
+
+// orderItemTypeRoutes registers the order item type routes. auth runs before
+// RequirePermission on every route and must leave a models.User in the context
+// under "user" (AuthMiddleware + UserActiveMiddleware in production).
+func orderItemTypeRoutes(g *gin.RouterGroup, h *handlers.Handler, auth ...gin.HandlerFunc) {
+	with := func(slug string, handler gin.HandlerFunc) []gin.HandlerFunc {
+		return append(append([]gin.HandlerFunc{}, auth...), middleware.RequirePermission(slug), handler)
+	}
+	g.POST("", with("create_order_item_type", h.CreateOrderItemTypeModel)...)
+	g.GET("", with("get_order_item_type", h.GetOrderItemTypesByCompany)...)
+	g.PUT("", with("edit_order_item_type", h.UpdateOrderItemType)...)
+	g.GET("get-by-primary-key/:id", with("get_order_item_type", h.GetOrderItemTypeByID)...)
+	g.DELETE("/:id", with("delete_order_item_type", h.DeleteOrderItemType)...)
+}
+
+// orderItemRoutes registers the order item routes. auth must leave a
+// models.User in the context under "user". The company comes from the order,
+// so each handler checks the permission itself with middleware.UserCan.
+func orderItemRoutes(g *gin.RouterGroup, h *handlers.Handler, auth ...gin.HandlerFunc) {
+	with := func(handler gin.HandlerFunc) []gin.HandlerFunc {
+		return append(append([]gin.HandlerFunc{}, auth...), handler)
+	}
+	g.POST("", with(h.CreateOrderItemModel)...)
+	g.POST("edit", with(h.UpdateOrderItemModel)...)
+	g.DELETE("/:id", with(h.DeleteOrderItemByID)...)
+	g.POST("/edit-status", with(h.UpdateOrderItemStatus)...)
+}
+
+// companyRoutes registers the super admin company routes. auth must leave a
+// models.User in the context under "user"; SuperAdminMiddleware then checks it.
+func companyRoutes(g *gin.RouterGroup, h *handlers.Handler, auth ...gin.HandlerFunc) {
+	with := func(handler gin.HandlerFunc) []gin.HandlerFunc {
+		return append(append([]gin.HandlerFunc{}, auth...), middleware.SuperAdminMiddleware(), handler)
+	}
+	g.POST("", with(h.CreateCompanyModel)...)
+	g.GET("", with(h.GetCompaniesList)...)
+	g.GET("/:id", with(h.GetCompanyShow)...)
+	g.PATCH("/:id/settings", with(h.UpdateCompanySetting)...)
+	g.POST("/:id/block", with(h.BlockCompany)...)
+	g.POST("/:id/unblock", with(h.UnblockCompany)...)
+}
+
+// usersRoutes registers the user routes. auth must leave a models.User in the
+// context under "user". Write routes need a permission slug in the request's
+// company_id; read routes stay auth only.
+func usersRoutes(g *gin.RouterGroup, h *handlers.Handler, auth ...gin.HandlerFunc) {
+	with := func(slug string, handler gin.HandlerFunc) []gin.HandlerFunc {
+		return append(append([]gin.HandlerFunc{}, auth...), middleware.RequirePermission(slug), handler)
+	}
+	authOnly := func(handler gin.HandlerFunc) []gin.HandlerFunc {
+		return append(append([]gin.HandlerFunc{}, auth...), handler)
+	}
+	g.POST("", with("user_create", h.Create)...)
+	g.POST("/edit", with("edit_user", h.Edit)...)
+	g.DELETE("/:user-id", with("delete_user", h.DeleteUser)...)
+	g.GET("", authOnly(h.GetList)...)
+	g.GET("/:user-id", authOnly(h.GetById)...)
+	g.GET("/couriers", authOnly(h.GetCouriesList)...)
+
+	g.POST("/employees", authOnly(h.CreateEmployee)...)
+	g.GET("/employees", authOnly(h.GetEmployeeList)...)
+	g.GET("/employees/show", authOnly(h.ShowEmployeeDetailedData)...)
+	g.POST("/employees/add-transaction", authOnly(h.AddTransaction)...)
+	g.POST("/employees/attendance", authOnly(h.Attendance)...)
+}
+
+// rolesRoutes registers the role routes. auth must leave a models.User in the
+// context under "user". Reads check one of several slugs in the handler.
+func rolesRoutes(g *gin.RouterGroup, h *handlers.Handler, auth ...gin.HandlerFunc) {
+	with := func(slug string, handler gin.HandlerFunc) []gin.HandlerFunc {
+		return append(append([]gin.HandlerFunc{}, auth...), middleware.RequirePermission(slug), handler)
+	}
+	authOnly := func(handler gin.HandlerFunc) []gin.HandlerFunc {
+		return append(append([]gin.HandlerFunc{}, auth...), handler)
+	}
+	g.GET("", authOnly(h.GetRoles)...)
+	g.GET("/:id", authOnly(h.GetRole)...)
+	g.POST("", with("manage_roles", h.CreateRole)...)
+	g.PUT("/:id", with("manage_roles", h.UpdateRole)...)
+	g.DELETE("/:id", with("manage_roles", h.DeleteRole)...)
 }
