@@ -39,6 +39,8 @@ var SettingsCatalog = map[string]SettingDef{
 	// Kuryer (user_companies.is_courier) buyum qo'shganda "Yuvilgan" belgisi
 	// standart holatda yoqiqmi. false bo'lsa kuryer uchun belgilanmagan ochiladi.
 	"courier_item_washed": {Type: "bool", Default: true},
+	// Buyurtma "Olingan" (2) ga o'tganda auth bot xodimdan lokatsiya so'raydi.
+	"telegram_location": {Type: "bool", Default: false},
 }
 
 // DefaultSettings returns every catalog key with its default as JSON.

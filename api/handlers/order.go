@@ -331,6 +331,13 @@ func (h *Handler) UpdateOrderModel(c *gin.Context) {
 
 	if oldOrderStatus != order.Status {
 
+		// telegram_location yoqiq korxonada holat 2 ga o'tganda Laravel auth bot
+		// orqali holatni o'zgartirgan xodimdan lokatsiya so'raydi.
+		askLocation := false
+		if company, err := h.Stg.Company().GetShow(order.CompanyID); err == nil {
+			askLocation = models.AskLocation(company.Settings, int(oldOrderStatus), int(order.Status))
+		}
+
 		h.Stg.StatusChangeHistory().Create(models.CreateStatusChangeHistoryModel{
 			HistoryableType: "orders",
 			HistoryableID:   order.ID,
@@ -373,10 +380,12 @@ func (h *Handler) UpdateOrderModel(c *gin.Context) {
 			go func() {
 				defer wg.Done()
 				requestBody := map[string]interface{}{
-					"order_id":   order.ID,
-					"status":     order.Status,
-					"company_id": order.CompanyID,
-					"flag":       h.Cfg.Release_Mode,
+					"order_id":     order.ID,
+					"status":       order.Status,
+					"company_id":   order.CompanyID,
+					"flag":         h.Cfg.Release_Mode,
+					"user_id":      user.ID,
+					"ask_location": askLocation,
 				}
 				requestBodyJson, err := json.Marshal(requestBody)
 				if err != nil {

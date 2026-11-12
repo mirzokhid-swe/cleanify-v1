@@ -534,43 +534,6 @@ func (stg *orderRepo) Update(userID int64, entity *models.UpdateOrderRequest) (r
 	return rowsAffected, nil
 }
 
-func (stg *orderRepo) GetLocation(ID int) (models.Order, error) {
-	var order models.Order
-	err := stg.db.QueryRow(`select o.id, 
-								   o.company_id, 
-								   c.phone_number, 
-								   c.additional_phone_number, 
-								   c.work_number, 
-								   o.count, 
-								   o.slug, 
-								   o.description, 
-								   c.latitute, 
-								   c.longitude, 
-								   o.created_at, 
-								   o.updated_at 
-								from orders o
-							left join clients c on o.client_id = c.id 
-							where o.id = $1`, ID).Scan(
-		&order.ID,
-		&order.CompanyID,
-		&order.PhoneNumber,
-		&order.AdditionalPhoneNumber,
-		&order.WorkNumber,
-		&order.Count,
-		&order.Slug,
-		&order.Description,
-		&order.Latitute,
-		&order.Longitude,
-		&order.CreatedAt,
-		&order.UpdatedAt,
-	)
-	if err != nil {
-		return order, err
-	}
-
-	return order, nil
-}
-
 func (stg *orderRepo) Delete(entity models.DeleteOrderRequest) error {
 	_, err := stg.db.Exec(`delete from order_items where order_id = $1`, entity.ID)
 	if err != nil {
