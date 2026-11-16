@@ -7,10 +7,13 @@ import (
 
 func TestDefaultSettingsKeyCount(t *testing.T) {
 	d := DefaultSettings()
-	if len(d) != 16 {
+	if len(d) != 20 {
 		t.Fatal(len(d))
 	}
 	if string(d["payment_tolerance"]) != "0" || string(d["volume_mode"]) != `"type"` || string(d["kpi_enabled"]) != "false" || string(d["courier_item_washed"]) != "true" || string(d["telegram_location"]) != "false" || string(d["order_id_visible"]) != "false" {
+		t.Fatal(d)
+	}
+	if string(d["kpi_share_accepted"]) != "7" || string(d["kpi_share_delivered"]) != "4" || string(d["status_metrics_enabled"]) != "false" || string(d["status_metrics_days"]) != "40" {
 		t.Fatal(d)
 	}
 }
@@ -24,6 +27,11 @@ func TestValidateSetting(t *testing.T) {
 		{"item_count_enabled", "false", "false"},
 		{"item_count_max", "1", "1"},
 		{"item_count_max", "100", "100"},
+		{"kpi_share_accepted", "7", "7"},
+		{"kpi_share_accepted", "7.5", "7.5"},
+		{"kpi_share_delivered", "0", "0"},
+		{"status_metrics_enabled", "true", "true"},
+		{"status_metrics_days", "40", "40"},
 	}
 	for _, c := range ok {
 		got, err := ValidateSetting(c.k, json.RawMessage(c.v))
@@ -46,6 +54,13 @@ func TestValidateSetting(t *testing.T) {
 		{"kpi_enabled", ""},
 		{"item_count_max", "0"},
 		{"item_count_max", "101"},
+		{"kpi_share_accepted", "101"},
+		{"kpi_share_accepted", "-1"},
+		{"kpi_share_accepted", `"7.5"`},
+		{"status_metrics_enabled", `"1"`},
+		{"status_metrics_days", "6"},
+		{"status_metrics_days", "181"},
+		{"status_metrics_days", "60.5"},
 	}
 	for _, c := range bad {
 		if _, err := ValidateSetting(c.k, json.RawMessage(c.v)); err == nil {
@@ -59,10 +74,10 @@ func TestValidateSetting(t *testing.T) {
 
 func TestMergeSettingsOverridesDefaults(t *testing.T) {
 	m := MergeSettings(map[string]json.RawMessage{"kpi_enabled": json.RawMessage("true")})
-	if string(m["kpi_enabled"]) != "true" || string(m["volume_mode"]) != `"type"` || string(m["order_id_visible"]) != "false" || len(m) != 16 {
+	if string(m["kpi_enabled"]) != "true" || string(m["volume_mode"]) != `"type"` || string(m["order_id_visible"]) != "false" || len(m) != 20 {
 		t.Fatal(m)
 	}
-	if len(MergeSettings(nil)) != 16 {
+	if len(MergeSettings(nil)) != 20 {
 		t.Fatal("nil rows must give defaults")
 	}
 }
