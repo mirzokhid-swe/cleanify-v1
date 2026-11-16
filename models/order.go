@@ -157,10 +157,6 @@ type OrderReceipt struct {
 	OrderItems         []OrderItem `json:"order_item"`
 }
 
-type OrderSendLocationRequest struct {
-	OrderID int `form:"order_id" binding:"required"`
-}
-
 // UpdateOrderRequest: fields left out of the JSON are not changed.
 // CourierID: nil → unchanged, 0 → courier removed (NULL), > 0 → set, < 0 → 400.
 // Slots: nil → unchanged, [] → cleared. PaymentStatus != 0 → manual value (change_payment_status).
@@ -238,4 +234,16 @@ type SetOrderPriceRequest struct {
 	// ServicePrice float64 `json:"service_price" binding:"required"`
 	// DiscountPercentage float64 `json:"discount_percentage" binding:"required"`
 	DiscountedPrice float64 `json:"discounted_price"`
+}
+
+// AskLocation: holat haqiqatan "Olingan" (2) ga o'tdi va kompaniyada
+// telegram_location yoqiq bo'lsa auth bot xodimdan lokatsiya so'raydi.
+// settings — MergeSettings natijasi.
+func AskLocation(settings map[string]json.RawMessage, oldStatus, newStatus int) bool {
+	if newStatus != 2 || oldStatus == 2 {
+		return false
+	}
+	var enabled bool
+	_ = json.Unmarshal(settings["telegram_location"], &enabled)
+	return enabled
 }

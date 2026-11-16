@@ -5,12 +5,12 @@ import (
 	"testing"
 )
 
-func TestDefaultSettingsHasElevenKeys(t *testing.T) {
+func TestDefaultSettingsKeyCount(t *testing.T) {
 	d := DefaultSettings()
-	if len(d) != 11 {
+	if len(d) != 16 {
 		t.Fatal(len(d))
 	}
-	if string(d["payment_tolerance"]) != "0" || string(d["volume_mode"]) != `"type"` || string(d["kpi_enabled"]) != "false" || string(d["courier_item_washed"]) != "true" {
+	if string(d["payment_tolerance"]) != "0" || string(d["volume_mode"]) != `"type"` || string(d["kpi_enabled"]) != "false" || string(d["courier_item_washed"]) != "true" || string(d["telegram_location"]) != "false" || string(d["order_id_visible"]) != "false" {
 		t.Fatal(d)
 	}
 }
@@ -59,10 +59,10 @@ func TestValidateSetting(t *testing.T) {
 
 func TestMergeSettingsOverridesDefaults(t *testing.T) {
 	m := MergeSettings(map[string]json.RawMessage{"kpi_enabled": json.RawMessage("true")})
-	if string(m["kpi_enabled"]) != "true" || string(m["volume_mode"]) != `"type"` || len(m) != 11 {
+	if string(m["kpi_enabled"]) != "true" || string(m["volume_mode"]) != `"type"` || string(m["order_id_visible"]) != "false" || len(m) != 16 {
 		t.Fatal(m)
 	}
-	if len(MergeSettings(nil)) != 11 {
+	if len(MergeSettings(nil)) != 16 {
 		t.Fatal("nil rows must give defaults")
 	}
 }

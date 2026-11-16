@@ -39,6 +39,15 @@ var SettingsCatalog = map[string]SettingDef{
 	// Kuryer (user_companies.is_courier) buyum qo'shganda "Yuvilgan" belgisi
 	// standart holatda yoqiqmi. false bo'lsa kuryer uchun belgilanmagan ochiladi.
 	"courier_item_washed": {Type: "bool", Default: true},
+// Buyurtma "Olingan" (2) ga o'tganda auth bot xodimdan lokatsiya so'raydi.
+	"telegram_location": {Type: "bool", Default: false},
+	// Ro'yxat kartasi va buyurtma sahifasida raqamli ID ko'rsatiladimi.
+	"order_id_visible": {Type: "bool", Default: false},
+	// To'lov chegarasi: to'lov buyurtma summasining percent% idan kam yoki
+	// summa + percent% dan ko'p bo'lmasin. scope: har bir to'lov yoki jami to'langan.
+	"payment_limit_enabled": {Type: "bool", Default: false},
+	"payment_limit_percent": {Type: "int", Default: 15, Min: &one, Max: &hundred},
+	"payment_limit_scope":   {Type: "enum", Default: "total", Values: []string{"total", "transaction"}},
 }
 
 // DefaultSettings returns every catalog key with its default as JSON.

@@ -5,7 +5,6 @@ import "bw-erp/models"
 type OrderI interface {
 	Create(userID int64, entity models.CreateOrderModel) (id int, err error)
 	GetList(companyID string, queryParam models.OrdersListRequest) (res models.OrderListResponse, err error)
-	GetLocation(ID int) (models.Order, error)
 	GetDetailedByPrimaryKey(ID int) (models.OrderShowResponse, error)
 	Update(userID int64, entity *models.UpdateOrderRequest) (rowsAffected int64, err error)
 	GetByStatus(companyID string, Status int) (order []models.Order, err error)
