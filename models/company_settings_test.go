@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestDefaultSettingsHasElevenKeys(t *testing.T) {
+func TestDefaultSettingsKeyCount(t *testing.T) {
 	d := DefaultSettings()
 	if len(d) != 14 {
 		t.Fatal(len(d))

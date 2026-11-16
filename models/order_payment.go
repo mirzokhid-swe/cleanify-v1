@@ -59,9 +59,10 @@ func PaymentLimitErrorFor(amount float64, s PaymentSummary, enabled bool, percen
 	}
 	min := math.Round(s.Total * float64(percent) / 100)
 	max := s.Total + min
-	checked := amount
-	if scope == "total" {
-		checked = s.Paid + amount
+	// JS tomoni bilan bir xil: noma'lum qiymat "total" deb qaraladi.
+	checked := s.Paid + amount
+	if scope == "transaction" {
+		checked = amount
 	}
 	if checked < min {
 		return "Kamida " + spaced(min) + " so'm"
