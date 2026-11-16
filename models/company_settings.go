@@ -153,6 +153,17 @@ func MergeSettings(rows map[string]json.RawMessage) map[string]json.RawMessage {
 	return out
 }
 
+// StatusMetricsDays: holat ko'rsatkichlari davri (kun). Bo'sh yoki buzuq
+// qiymatda standart 40. settings — MergeSettings yoki GetShow().Settings.
+func StatusMetricsDays(settings map[string]json.RawMessage) int {
+	days := 0
+	_ = json.Unmarshal(settings["status_metrics_days"], &days)
+	if days < 1 {
+		return 40
+	}
+	return days
+}
+
 type UpdateCompanySettingRequest struct {
 	Key   string          `json:"key" binding:"required"`
 	Value json.RawMessage `json:"value" binding:"required"`

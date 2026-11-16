@@ -98,6 +98,18 @@ func TestItemCountMax(t *testing.T) {
 	}
 }
 
+func TestStatusMetricsDays(t *testing.T) {
+	if got := StatusMetricsDays(nil); got != 40 {
+		t.Fatal("empty:", got)
+	}
+	if got := StatusMetricsDays(map[string]json.RawMessage{"status_metrics_days": json.RawMessage("60")}); got != 60 {
+		t.Fatal("60:", got)
+	}
+	if got := StatusMetricsDays(map[string]json.RawMessage{"status_metrics_days": json.RawMessage(`"x"`)}); got != 40 {
+		t.Fatal("broken:", got)
+	}
+}
+
 func TestSettingsCatalogHasNoPermissionsMode(t *testing.T) {
 	if _, ok := SettingsCatalog["permissions_mode"]; ok {
 		t.Fatal("permissions_mode must be removed")
