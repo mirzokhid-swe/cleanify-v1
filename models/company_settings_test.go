@@ -13,7 +13,7 @@ func TestDefaultSettingsKeyCount(t *testing.T) {
 	if string(d["payment_tolerance"]) != "0" || string(d["volume_mode"]) != `"type"` || string(d["kpi_enabled"]) != "false" || string(d["courier_item_washed"]) != "true" || string(d["telegram_location"]) != "false" || string(d["order_id_visible"]) != "false" {
 		t.Fatal(d)
 	}
-	if string(d["kpi_share_accepted"]) != "7" || string(d["kpi_share_delivered"]) != "4" || string(d["status_metrics_enabled"]) != "false" || string(d["status_metrics_days"]) != "40" {
+	if string(d["kpi_share_accepted"]) != "7.5" || string(d["kpi_share_delivered"]) != "3.5" || string(d["status_metrics_enabled"]) != "false" || string(d["status_metrics_days"]) != "40" {
 		t.Fatal(d)
 	}
 }

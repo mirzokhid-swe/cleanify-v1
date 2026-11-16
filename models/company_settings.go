@@ -50,9 +50,9 @@ var SettingsCatalog = map[string]SettingDef{
 	"payment_limit_enabled": {Type: "bool", Default: false},
 	"payment_limit_percent": {Type: "int", Default: 15, Min: &one, Max: &hundred},
 	"payment_limit_scope":   {Type: "enum", Default: "total", Values: []string{"total", "transaction"}},
-	// "Obyom" ulushi, % (oldin Laravel KpiController::shares 7/4).
-	"kpi_share_accepted":  {Type: "number", Default: 7, Min: &zero, Max: &hundred},
-	"kpi_share_delivered": {Type: "number", Default: 4, Min: &zero, Max: &hundred},
+	// "Obyom" ulushi, % (oldin Laravel KpiController::shares 7.5/3.5).
+	"kpi_share_accepted":  {Type: "number", Default: 7.5, Min: &zero, Max: &hundred},
+	"kpi_share_delivered": {Type: "number", Default: 3.5, Min: &zero, Max: &hundred},
 	// "Holatlar bo'yicha ko'rsatkichlar" bandi menyuda va uning davri (kun).
 	"status_metrics_enabled": {Type: "bool", Default: false},
 	"status_metrics_days":    {Type: "int", Default: 40, Min: &seven, Max: &oneEighty},
