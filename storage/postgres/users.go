@@ -191,6 +191,7 @@ func (stg userRepo) GetList(companyID string) ([]models.UserListItem, error) {
 								join users u on u.id = uc.user_id
 								left join roles r on r.id = uc.role_id
 								where uc.company_id::text = $1 and u.deleted_at is null
+								and (coalesce(u.is_super_admin, false) = false or u.company_id::text = $1)
 								order by u.fullname`, companyID)
 	if err != nil {
 		return nil, err
@@ -363,7 +364,8 @@ func (stg *userRepo) GetCouriesList(companyID string) ([]models.GetCouriesRespon
 		SELECT u.id, fullname 
 		FROM user_companies uc
 		INNER JOIN users u ON uc.user_id::text = u.id::text
-		WHERE uc.company_id::text = $1 AND uc.is_courier = true AND u.deleted_at IS NULL`, companyID)
+		WHERE uc.company_id::text = $1 AND uc.is_courier = true AND u.deleted_at IS NULL
+			AND (coalesce(u.is_super_admin, false) = false OR u.company_id::text = $1)`, companyID)
 
 	if err != nil {
 		return nil, err

@@ -430,3 +430,67 @@ func TestUserCreateDuplicatePhoneIsErrPhoneTaken(t *testing.T) {
 		t.Fatalf("edit to taken phone: want ErrPhoneTaken, got %v (first=%d)", err, firstID)
 	}
 }
+
+// Super admin hamma korxonaga a'zo, lekin xodimlar va kuryerlar ro'yxatida
+// faqat o'z korxonasida (users.company_id) ko'rinadi.
+func TestSuperAdminListedOnlyInHomeCompany(t *testing.T) {
+	db := testDB(t)
+	t.Cleanup(func() { db.Close() })
+	repo := NewUserRepo(db)
+
+	const homeCompany = "8070790f-429b-449e-bfe5-fab0440c518f" // Demo
+	phone := fmt.Sprintf("+99801%07d", rand.Intn(10000000))
+	var userID int64
+	if err := db.Get(&userID, `insert into users (fullname, phone, company_id, is_active, is_super_admin)
+		values ('Test super', $1, $2, true, true) returning id`, phone, homeCompany); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	for _, company := range []string{homeCompany, demo2Company} {
+		if _, err := db.Exec(`insert into user_companies (user_id, company_id, permission_ids, is_courier)
+			values ($1, $2, '{}', true)`, userID, company); err != nil {
+			t.Fatalf("user_companies %s: %v", company, err)
+		}
+	}
+	t.Cleanup(func() {
+		db.Exec(`delete from user_companies where user_id = $1`, userID)
+		db.Exec(`delete from users where id = $1`, userID)
+	})
+
+	inList := func(company string) bool {
+		list, err := repo.GetList(company)
+		if err != nil {
+			t.Fatalf("list %s: %v", company, err)
+		}
+		for i := range list {
+			if list[i].ID == userID {
+				return true
+			}
+		}
+		return false
+	}
+	if !inList(homeCompany) {
+		t.Fatal("super admin o'z korxonasi ro'yxatida yo'q")
+	}
+	if inList(demo2Company) {
+		t.Fatal("super admin boshqa korxona ro'yxatida ko'rindi")
+	}
+
+	inCouriers := func(company string) bool {
+		list, err := repo.GetCouriesList(company)
+		if err != nil {
+			t.Fatalf("couriers %s: %v", company, err)
+		}
+		for i := range list {
+			if list[i].ID == fmt.Sprint(userID) {
+				return true
+			}
+		}
+		return false
+	}
+	if !inCouriers(homeCompany) {
+		t.Fatal("super admin o'z korxonasi kuryerlarida yo'q")
+	}
+	if inCouriers(demo2Company) {
+		t.Fatal("super admin boshqa korxona kuryerlarida ko'rindi")
+	}
+}
