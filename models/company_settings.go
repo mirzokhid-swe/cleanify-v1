@@ -39,6 +39,8 @@ var SettingsCatalog = map[string]SettingDef{
 	// Kuryer (user_companies.is_courier) buyum qo'shganda "Yuvilgan" belgisi
 	// standart holatda yoqiqmi. false bo'lsa kuryer uchun belgilanmagan ochiladi.
 	"courier_item_washed": {Type: "bool", Default: true},
+	// Ro'yxat kartasi va buyurtma sahifasida raqamli ID ko'rsatiladimi.
+	"order_id_visible": {Type: "bool", Default: false},
 }
 
 // DefaultSettings returns every catalog key with its default as JSON.
