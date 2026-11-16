@@ -1,6 +1,10 @@
 package models
 
-import "errors"
+import (
+	"errors"
+	"math"
+	"strconv"
+)
 
 // PaymentSummary is returned after every payment change and by the order page.
 type PaymentSummary struct {
@@ -43,6 +47,43 @@ func PaymentAmountErrorFor(amount float64, s PaymentSummary) string {
 		return ""
 	}
 	return PaymentAmountError(amount, s.Remaining)
+}
+
+// PaymentLimitErrorFor is the optional company rule on payment size: a payment
+// (scope "transaction") or the order's paid total (scope "total") must be at
+// least percent% of the order total and at most total + that minimum.
+// Returns "" when it passes. Orders without a price are free.
+func PaymentLimitErrorFor(amount float64, s PaymentSummary, enabled bool, percent int, scope string) string {
+	if !enabled || s.Total <= 0 {
+		return ""
+	}
+	min := math.Round(s.Total * float64(percent) / 100)
+	max := s.Total + min
+	// JS tomoni bilan bir xil: noma'lum qiymat "total" deb qaraladi.
+	checked := s.Paid + amount
+	if scope == "transaction" {
+		checked = amount
+	}
+	if checked < min {
+		return "Kamida " + spaced(min) + " so'm"
+	}
+	if checked > max {
+		return "Ko'pi bilan " + spaced(max) + " so'm"
+	}
+	return ""
+}
+
+// spaced writes a whole number with spaces between thousands: 115000 -> "115 000".
+func spaced(n float64) string {
+	digits := strconv.FormatInt(int64(n), 10)
+	out := ""
+	for i, c := range digits {
+		if i > 0 && (len(digits)-i)%3 == 0 {
+			out += " "
+		}
+		out += string(c)
+	}
+	return out
 }
 
 type DeleteTransactionRequest struct {

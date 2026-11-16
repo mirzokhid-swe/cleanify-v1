@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 
 	"bw-erp/models"
@@ -97,6 +98,37 @@ func (stg *orderRepo) AddPayment(userID int64, entity models.AddOrderPaymentRequ
 		return summary, err
 	}
 	if msg := models.PaymentAmountErrorFor(entity.Amount, summary); msg != "" {
+		return summary, models.PaymentAmountErr{Msg: msg}
+	}
+
+	rows, err := tx.Query(`select key, value from company_settings
+		where company_id = $1 and key in ('payment_limit_enabled','payment_limit_percent','payment_limit_scope')`, entity.CompanyID)
+	if err != nil {
+		return summary, err
+	}
+	stored := map[string]json.RawMessage{}
+	for rows.Next() {
+		var key string
+		var value json.RawMessage
+		if err := rows.Scan(&key, &value); err != nil {
+			rows.Close()
+			return summary, err
+		}
+		stored[key] = value
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return summary, err
+	}
+	// Missing keys fall back to the catalog defaults.
+	limit := models.MergeSettings(stored)
+	var limitEnabled bool
+	var limitPercent int
+	var limitScope string
+	_ = json.Unmarshal(limit["payment_limit_enabled"], &limitEnabled)
+	_ = json.Unmarshal(limit["payment_limit_percent"], &limitPercent)
+	_ = json.Unmarshal(limit["payment_limit_scope"], &limitScope)
+	if msg := models.PaymentLimitErrorFor(entity.Amount, summary, limitEnabled, limitPercent, limitScope); msg != "" {
 		return summary, models.PaymentAmountErr{Msg: msg}
 	}
 
