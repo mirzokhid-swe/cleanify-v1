@@ -86,3 +86,17 @@ func TestGroupPermissionsNameOverrides(t *testing.T) {
 		t.Fatal(m)
 	}
 }
+
+// get_financial_metrics bazada qoladi, lekin ekranda ko'rinmaydi;
+// get_status_metrics "Ko'rsatkichlar" guruhida chiqadi.
+func TestGroupPermissionsHidesFinancialMetrics(t *testing.T) {
+	perms := []Permission{
+		{ID: "27", Slug: "get_financial_metrics", Name: "Moliya", Group: "Statistikalar"},
+		{ID: "68", Slug: "get_status_metrics", Name: "Holatlar bo'yicha ko'rsatkichlar", Group: "Statistikalar"},
+	}
+	got := GroupPermissions(perms, nil)
+	g := groupByName(got, "Ko'rsatkichlar")
+	if g == nil || len(g.Items) != 1 || g.Items[0].Slug != "get_status_metrics" {
+		t.Fatalf("%+v", got)
+	}
+}
