@@ -41,6 +41,8 @@ var SettingsCatalog = map[string]SettingDef{
 	"courier_item_washed": {Type: "bool", Default: true},
 	// Buyurtma "Olingan" (2) ga o'tganda auth bot xodimdan lokatsiya so'raydi.
 	"telegram_location": {Type: "bool", Default: false},
+	// Ro'yxat kartasi va buyurtma sahifasida raqamli ID ko'rsatiladimi.
+	"order_id_visible": {Type: "bool", Default: false},
 }
 
 // DefaultSettings returns every catalog key with its default as JSON.
