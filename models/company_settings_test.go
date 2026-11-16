@@ -7,7 +7,7 @@ import (
 
 func TestDefaultSettingsHasElevenKeys(t *testing.T) {
 	d := DefaultSettings()
-	if len(d) != 11 {
+	if len(d) != 14 {
 		t.Fatal(len(d))
 	}
 	if string(d["payment_tolerance"]) != "0" || string(d["volume_mode"]) != `"type"` || string(d["kpi_enabled"]) != "false" || string(d["courier_item_washed"]) != "true" {
@@ -59,10 +59,10 @@ func TestValidateSetting(t *testing.T) {
 
 func TestMergeSettingsOverridesDefaults(t *testing.T) {
 	m := MergeSettings(map[string]json.RawMessage{"kpi_enabled": json.RawMessage("true")})
-	if string(m["kpi_enabled"]) != "true" || string(m["volume_mode"]) != `"type"` || len(m) != 11 {
+	if string(m["kpi_enabled"]) != "true" || string(m["volume_mode"]) != `"type"` || len(m) != 14 {
 		t.Fatal(m)
 	}
-	if len(MergeSettings(nil)) != 11 {
+	if len(MergeSettings(nil)) != 14 {
 		t.Fatal("nil rows must give defaults")
 	}
 }
