@@ -207,7 +207,7 @@ func (h *Handler) SetOrderPrice(c *gin.Context) {
 }
 
 // AddOrderPayment records a payment and returns {payment_status, total, paid, remaining}.
-// amount > remaining or ≤ 0 → 400 with the reason; a duplicate within 1 minute → 200, not stored.
+// amount ≤ 0 or outside the company payment limit → 400 with the reason; a duplicate within 1 minute → 200, not stored.
 func (h *Handler) AddOrderPayment(c *gin.Context) {
 	var body models.AddOrderPaymentRequest
 	if err := c.ShouldBindJSON(&body); err != nil {
