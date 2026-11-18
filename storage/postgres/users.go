@@ -117,15 +117,28 @@ func (stg userRepo) GetByPhone(phone string) (models.AuthUserModel, error) {
 	return user, nil
 }
 
+// GetById: o'chirilgan xodim topilmagan hisoblanadi (sql.ErrNoRows).
 func (stg userRepo) GetById(id int64) (models.User, error) {
+	user, err := stg.GetByIdWithDeleted(id)
+	if err != nil {
+		return user, err
+	}
+	if user.DeletedAt != nil {
+		return models.User{}, sql.ErrNoRows
+	}
+	return user, nil
+}
+
+func (stg userRepo) GetByIdWithDeleted(id int64) (models.User, error) {
 	var user models.User
-	err := stg.db.QueryRow(`select u.id, u.fullname, u.phone, c.id, u.is_active, u.is_super_admin from users u left join companies c on c.id::text = u.company_id::text where u.id = $1 and u.deleted_at is null`, id).Scan(
+	err := stg.db.QueryRow(`select u.id, u.fullname, u.phone, c.id, u.is_active, u.is_super_admin, u.deleted_at from users u left join companies c on c.id::text = u.company_id::text where u.id = $1`, id).Scan(
 		&user.ID,
 		&user.Fullname,
 		&user.Phone,
 		&user.CompanyID,
 		&user.IsActive,
 		&user.IsSuperAdmin,
+		&user.DeletedAt,
 	)
 	if err != nil {
 		return user, err

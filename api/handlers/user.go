@@ -180,7 +180,8 @@ func (h *Handler) GetById(c *gin.Context) {
 		return
 	}
 
-	user, err := h.Stg.User().GetById(int64(user_id))
+	// O'chirilgan xodim ham qaytadi (deleted_at bilan): faqat ro'yxatda ko'rinmaydi.
+	user, err := h.Stg.User().GetByIdWithDeleted(int64(user_id))
 
 	if errors.Is(err, sql.ErrNoRows) {
 		h.handleResponse(c, http.NOT_FOUND, "user not found")

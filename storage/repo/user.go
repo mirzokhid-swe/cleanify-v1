@@ -5,7 +5,10 @@ import "bw-erp/models"
 type UserI interface {
 	Create(entity models.CreateUserModel) (int64, error)
 	GetByPhone(phone string) (models.AuthUserModel, error)
+	// GetById: faqat o'chirilmagan xodim (kirish, tahrirlash, o'chirish uchun).
 	GetById(id int64) (models.User, error)
+	// GetByIdWithDeleted: o'chirilgan xodim ham qaytadi (DeletedAt to'ldirilgan) — ko'rsatish uchun.
+	GetByIdWithDeleted(id int64) (models.User, error)
 	GetList(companyID string) ([]models.UserListItem, error)
 	ChangePassword(userID int64, entity models.ChangePasswordRequest) error
 	Edit(entity models.UpdateUserRequest) (rowsAffected int64, err error)
