@@ -25,6 +25,9 @@ var GroupOrder = []string{"Buyurtmalar", "Holatni o'zgartirish", "Buyurtma buyum
 
 var HiddenGroups = []string{"Leadlar", "Lead statuslari"}
 
+// Bazada qoladigan, lekin ekranda ko'rsatilmaydigan huquqlar.
+var HiddenSlugs = []string{"get_financial_metrics"}
+
 // GroupNames maps a DB group to the screen group; a group not listed keeps its own name.
 var GroupNames = map[string]string{
 	"Buyurtma mahsulotlari":         "Buyurtma buyumlari",
@@ -84,6 +87,11 @@ func GroupPermissions(perms []Permission, statuses []OrderStatus) []PermissionGr
 		hidden := false
 		for _, g := range HiddenGroups {
 			if p.Group == g {
+				hidden = true
+			}
+		}
+		for _, s := range HiddenSlugs {
+			if p.Slug == s {
 				hidden = true
 			}
 		}

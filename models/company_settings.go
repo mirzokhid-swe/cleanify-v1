@@ -11,7 +11,7 @@ import (
 // (for enums) the allowed values. The catalog is the single source of truth;
 // the front keeps a copy of the defaults in constants/company-settings.js.
 type SettingDef struct {
-	Type    string // "bool", "int", "enum"
+	Type    string // "bool", "int", "number", "enum"
 	Default interface{}
 	Values  []string
 	Min     *int
@@ -22,7 +22,9 @@ var ErrUnknownSetting = errors.New("unknown setting")
 
 var zero = 0
 var one = 1
+var seven = 7
 var hundred = 100
+var oneEighty = 180
 
 var SettingsCatalog = map[string]SettingDef{
 	"order_card_code":         {Type: "bool", Default: false},
@@ -48,6 +50,12 @@ var SettingsCatalog = map[string]SettingDef{
 	"payment_limit_enabled": {Type: "bool", Default: false},
 	"payment_limit_percent": {Type: "int", Default: 15, Min: &one, Max: &hundred},
 	"payment_limit_scope":   {Type: "enum", Default: "total", Values: []string{"total", "transaction"}},
+	// "Obyom" ulushi, % (oldin Laravel KpiController::shares 7.5/3.5).
+	"kpi_share_accepted":  {Type: "number", Default: 7.5, Min: &zero, Max: &hundred},
+	"kpi_share_delivered": {Type: "number", Default: 3.5, Min: &zero, Max: &hundred},
+	// "Holatlar bo'yicha ko'rsatkichlar" bandi menyuda va uning davri (kun).
+	"status_metrics_enabled": {Type: "bool", Default: false},
+	"status_metrics_days":    {Type: "int", Default: 40, Min: &seven, Max: &oneEighty},
 }
 
 // DefaultSettings returns every catalog key with its default as JSON.
@@ -97,6 +105,28 @@ func ValidateSetting(key string, raw json.RawMessage) (json.RawMessage, error) {
 			return nil, fmt.Errorf("%s must be <= %d", key, *def.Max)
 		}
 		return json.Marshal(v)
+	case "number":
+		var any interface{}
+		dec := json.NewDecoder(bytes.NewReader(raw))
+		dec.UseNumber()
+		if err := dec.Decode(&any); err != nil {
+			return nil, fmt.Errorf("%s must be a number", key)
+		}
+		n, ok := any.(json.Number)
+		if !ok {
+			return nil, fmt.Errorf("%s must be a number", key)
+		}
+		v, err := n.Float64()
+		if err != nil {
+			return nil, fmt.Errorf("%s must be a number", key)
+		}
+		if def.Min != nil && v < float64(*def.Min) {
+			return nil, fmt.Errorf("%s must be >= %d", key, *def.Min)
+		}
+		if def.Max != nil && v > float64(*def.Max) {
+			return nil, fmt.Errorf("%s must be <= %d", key, *def.Max)
+		}
+		return json.Marshal(v)
 	case "enum":
 		var v string
 		if err := json.Unmarshal(raw, &v); err != nil {
@@ -121,6 +151,17 @@ func MergeSettings(rows map[string]json.RawMessage) map[string]json.RawMessage {
 		}
 	}
 	return out
+}
+
+// StatusMetricsDays: holat ko'rsatkichlari davri (kun). Bo'sh yoki buzuq
+// qiymatda standart 40. settings — MergeSettings yoki GetShow().Settings.
+func StatusMetricsDays(settings map[string]json.RawMessage) int {
+	days := 0
+	_ = json.Unmarshal(settings["status_metrics_days"], &days)
+	if days < 1 {
+		return 40
+	}
+	return days
 }
 
 type UpdateCompanySettingRequest struct {
