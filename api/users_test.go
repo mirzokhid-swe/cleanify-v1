@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"bw-erp/api/handlers"
 	"bw-erp/models"
@@ -20,6 +21,7 @@ type fakeUserRepo struct {
 	created    *models.CreateUserModel
 	edited     *models.UpdateUserRequest
 	target     *models.User // GetById result; nil → sql.ErrNoRows
+	anyTarget  *models.User // GetByIdWithDeleted result; nil → sql.ErrNoRows
 	deletedID  int64
 	deletedBy  int64
 	deleteCall bool
@@ -38,6 +40,13 @@ func (f *fakeUserRepo) GetById(id int64) (models.User, error) {
 		return models.User{}, sql.ErrNoRows
 	}
 	return *f.target, nil
+}
+
+func (f *fakeUserRepo) GetByIdWithDeleted(id int64) (models.User, error) {
+	if f.anyTarget == nil {
+		return models.User{}, sql.ErrNoRows
+	}
+	return *f.anyTarget, nil
 }
 
 func (f *fakeUserRepo) Edit(e models.UpdateUserRequest) (int64, error) {
@@ -203,7 +212,19 @@ func TestUsersCreateCompanyMismatchIs400(t *testing.T) {
 	}
 }
 
-func TestUsersGetByIdDeletedIs404(t *testing.T) {
+// O'chirilgan xodim ham id bo'yicha qaytadi (deleted_at bilan): tarix, hisobot va
+// eski buyurtmalarda ismi ko'rinishi kerak. Faqat ro'yxatda ko'rinmaydi.
+func TestUsersGetByIdDeletedIsReturned(t *testing.T) {
+	deletedAt := time.Now()
+	users := &fakeUserRepo{anyTarget: &models.User{ID: 9, Fullname: "Ali", DeletedAt: &deletedAt}}
+	r := newUsersRouter(userWith("get_users_list"), users)
+	w := do(r, "GET", "/users/9", "")
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"fullname":"Ali"`) || !strings.Contains(w.Body.String(), `"deleted_at":"`) {
+		t.Fatalf("code=%d body=%s", w.Code, w.Body.String())
+	}
+}
+
+func TestUsersGetByIdMissingIs404(t *testing.T) {
 	users := &fakeUserRepo{}
 	r := newUsersRouter(userWith("get_users_list"), users)
 	w := do(r, "GET", "/users/9", "")

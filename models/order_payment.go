@@ -25,28 +25,14 @@ func (e PaymentAmountErr) Is(target error) bool {
 }
 
 // PaymentAmountError returns the user-facing reason a payment amount is
-// rejected, or "" when it is acceptable: amount must be > 0 and ≤ remaining.
-func PaymentAmountError(amount, remaining float64) string {
+// rejected, or "" when it is acceptable. Only a positive amount is required:
+// the debt (remaining) never limits a payment — paying more than the order
+// price is allowed. The optional company rule is PaymentLimitErrorFor.
+func PaymentAmountError(amount float64) string {
 	if amount <= 0 {
 		return "Summa noto'g'ri"
 	}
-	if amount > remaining {
-		return "Qolgan qarzdan ko'p"
-	}
 	return ""
-}
-
-// PaymentAmountErrorFor applies PaymentAmountError to an order summary. An
-// order without items (Total == 0) has no known price yet, so any positive
-// amount is accepted — otherwise a courier could never record such a payment.
-func PaymentAmountErrorFor(amount float64, s PaymentSummary) string {
-	if s.Total == 0 {
-		if amount <= 0 {
-			return "Summa noto'g'ri"
-		}
-		return ""
-	}
-	return PaymentAmountError(amount, s.Remaining)
 }
 
 // PaymentLimitErrorFor is the optional company rule on payment size: a payment

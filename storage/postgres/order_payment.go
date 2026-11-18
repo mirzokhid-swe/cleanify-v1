@@ -64,7 +64,7 @@ func paymentSummary(q queryRower, orderID int) (models.PaymentSummary, error) {
 
 // AddPayment runs inside one transaction with the order row locked, so two
 // simultaneous payments (a double tap) are serialised: the second one sees
-// the first and is dropped by the duplicate rule or the remaining check.
+// the first and is dropped by the duplicate rule.
 func (stg *orderRepo) AddPayment(userID int64, entity models.AddOrderPaymentRequest) (models.PaymentSummary, error) {
 	tx, err := stg.db.Beginx()
 	if err != nil {
@@ -97,7 +97,7 @@ func (stg *orderRepo) AddPayment(userID int64, entity models.AddOrderPaymentRequ
 	if err != nil {
 		return summary, err
 	}
-	if msg := models.PaymentAmountErrorFor(entity.Amount, summary); msg != "" {
+	if msg := models.PaymentAmountError(entity.Amount); msg != "" {
 		return summary, models.PaymentAmountErr{Msg: msg}
 	}
 

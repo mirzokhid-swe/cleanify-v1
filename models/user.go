@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"time"
 )
 
 // ErrPhoneTaken: shu raqamli faol (o'chirilmagan) xodim bor (users_phone_active_key).
@@ -49,6 +50,7 @@ type User struct {
 	CompanyID               *string                   `json:"company_id"`
 	IsActive                bool                      `json:"is_active"`
 	IsSuperAdmin            bool                      `json:"is_super_admin"`
+	DeletedAt               *time.Time                `json:"deleted_at"`
 	UserPermissionByCompany []UserPermissionByCompany `json:"user_permissions_by_company"`
 }
 

@@ -231,6 +231,11 @@ func TestUserDeleteHidesFromListAndGetById(t *testing.T) {
 	if _, err := repo.GetById(userID); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("GetById: want sql.ErrNoRows, got %v", err)
 	}
+	// id bo'yicha "o'chirilgani bilan" so'ralganda topiladi (ism tarix/hisobotlar uchun kerak)
+	gone, err := repo.GetByIdWithDeleted(userID)
+	if err != nil || gone.ID != userID || gone.DeletedAt == nil {
+		t.Fatalf("GetByIdWithDeleted: user=%+v err=%v", gone, err)
+	}
 
 	var deletedBy *int64
 	var isActive bool

@@ -76,6 +76,12 @@ const ordersListBaseSQL = `WITH base AS (
 		FROM transactions tr WHERE tr.payer_type = 'orders' AND tr.payer_id = o.id AND tr.deleted_at IS NULL
 	) t ON true`
 
+// countBase: sanoqlar uchun yengil asos — narx/to'langan (har buyurtmaga ikki
+// qidiruv) sanoqqa kerak emas.
+const ordersListCountBaseSQL = `WITH base AS (
+	SELECT o.status, o.payment_status, o.courier_id
+	FROM orders o`
+
 func (stg *orderRepo) GetList(companyID string, q models.OrdersListRequest) (models.OrderListResponse, error) {
 	res := models.OrderListResponse{Data: []models.OrderList{}, Counts: models.OrderListCounts{Statuses: map[string]int{}}}
 	if !q.DateFrom.IsZero() && !q.DateTo.IsZero() && q.DateFrom.After(q.DateTo) {
@@ -84,6 +90,8 @@ func (stg *orderRepo) GetList(companyID string, q models.OrdersListRequest) (mod
 
 	filter, params := ordersListFilter(companyID, q)
 	base := ordersListBaseSQL + filter + `
+)`
+	countBase := ordersListCountBaseSQL + filter + `
 )`
 	dataFilter := ordersListDataFilter(q)
 	if q.Status != 0 {
@@ -101,7 +109,7 @@ func (stg *orderRepo) GetList(companyID string, q models.OrdersListRequest) (mod
 		params["offset"] = 0
 	}
 
-	countsSQL, args := helper.ReplaceQueryParams(base+`
+	countsSQL, args := helper.ReplaceQueryParams(countBase+`
 SELECT count(*),
        count(*) FILTER (WHERE status = 6 AND payment_status IN (1,2)),
        COALESCE((SELECT jsonb_object_agg(status, n) FROM (SELECT status, count(*) AS n FROM base GROUP BY status) s), '{}'::jsonb)
@@ -116,7 +124,7 @@ FROM base`, params)
 		}
 	}
 
-	totalSQL, args := helper.ReplaceQueryParams(base+`
+	totalSQL, args := helper.ReplaceQueryParams(countBase+`
 SELECT count(*) FROM base WHERE true`+dataFilter, params)
 	if err := stg.db.QueryRow(totalSQL, args...).Scan(&res.Count); err != nil {
 		return res, err
