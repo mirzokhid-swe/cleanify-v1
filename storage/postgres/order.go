@@ -242,25 +242,41 @@ func (stg *orderRepo) GetDetailedByPrimaryKey(ID int) (models.OrderShowResponse,
 	}
 	defer rows.Close()
 
+	itemIDs := []int64{}
+	itemIndex := map[int64]int{}
 	for rows.Next() {
 		var item models.OrderItem
 		if err := rows.Scan(&item.ID, &item.OrderID, &item.Type, &item.Price, &item.Width, &item.Height, &item.OrderItemStatus, &item.IsCountable, &item.Description, &item.OrderItemTypeID, &item.Unit); err != nil {
 			return order, err
 		}
-		data, err := stg.db.Query(`select sch.status, u.fullname, sch.created_at from status_change_histories sch inner join users u on u.id = sch.user_id where historyable_type = 'order_items' and historyable_id = $1 order by created_at desc`, item.ID)
+		itemIndex[int64(item.ID)] = len(order.OrderItems)
+		itemIDs = append(itemIDs, int64(item.ID))
+		order.OrderItems = append(order.OrderItems, item)
+	}
+	if err := rows.Err(); err != nil {
+		return order, err
+	}
+
+	// Hamma buyumlarning holat tarixi bitta so'rovda (har buyumga alohida so'rov emas).
+	if len(itemIDs) > 0 {
+		data, err := stg.db.Query(`select sch.historyable_id, sch.status, u.fullname, sch.created_at from status_change_histories sch inner join users u on u.id = sch.user_id where historyable_type = 'order_items' and historyable_id = any($1) order by created_at desc`, pq.Array(itemIDs))
 		if err != nil {
 			return order, err
 		}
 		defer data.Close()
 
 		for data.Next() {
+			var itemID int64
 			var history models.StatusChangeHistory
-			if err := data.Scan(&history.Status, &history.Fullname, &history.CreatedAt); err != nil {
+			if err := data.Scan(&itemID, &history.Status, &history.Fullname, &history.CreatedAt); err != nil {
 				return order, err
 			}
-			item.StatusChangeHistory = append(item.StatusChangeHistory, history)
+			i := itemIndex[itemID]
+			order.OrderItems[i].StatusChangeHistory = append(order.OrderItems[i].StatusChangeHistory, history)
 		}
-		order.OrderItems = append(order.OrderItems, item)
+		if err := data.Err(); err != nil {
+			return order, err
+		}
 	}
 
 	rows, err = stg.db.Query(`select sch.status, u.fullname, sch.created_at from status_change_histories sch inner join users u on u.id = sch.user_id where historyable_type = 'orders' and historyable_id = $1 order by created_at asc`, ID)
