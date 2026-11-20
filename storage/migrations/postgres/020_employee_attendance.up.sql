@@ -20,9 +20,8 @@ CROSS JOIN LATERAL jsonb_array_elements(
     CASE WHEN jsonb_typeof(a.employees) = 'array' THEN a.employees ELSE '[]'::jsonb END
 ) r
 JOIN employees e
-    ON e.id = (r ->> 'employee_id')::int AND e.company_id = a.company_id
+    ON e.id::text = (r ->> 'employee_id') AND e.company_id = a.company_id
 WHERE a.date IS NOT NULL
   AND (r ->> 'work_schedule') IN ('1', '2')
-  AND (r ->> 'employee_id') ~ '^[0-9]+$'
 GROUP BY a.company_id, e.id, a.date
 ON CONFLICT (employee_id, date) DO NOTHING;
