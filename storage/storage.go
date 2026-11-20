@@ -24,6 +24,7 @@ type StorageI interface {
 	OrderStatus() repo.OrderStatusI
 	StatusChangeHistory() repo.StatusChangeHistoryI
 	Employee() repo.EmployeeI
+	Attendance() repo.AttendanceI
 	NotificationSetting() repo.NotificationSettingI
 	Notification() repo.NotificationI
 	Comment() repo.CommentStorageI
@@ -48,6 +49,7 @@ type storagePg struct {
 	orderStatus         repo.OrderStatusI
 	statusChangeHistory repo.StatusChangeHistoryI
 	employee            repo.EmployeeI
+	attendance          repo.AttendanceI
 	notificationSetting repo.NotificationSettingI
 	notification        repo.NotificationI
 	comment             repo.CommentStorageI
@@ -72,6 +74,7 @@ func NewStoragePg(db *sqlx.DB) StorageI {
 		orderStatus:         postgres.NewOrderStatusRepo(db),
 		statusChangeHistory: postgres.NewStatusChangeHistoryRepo(db),
 		employee:            postgres.NewEmployeeRepo(db),
+		attendance:          postgres.NewAttendanceRepo(db),
 		notificationSetting: postgres.NewNotificationSettingRepo(db),
 		notification:        postgres.NewNotificationRepo(db),
 		comment:             postgres.NewCommentRepo(db),
@@ -137,6 +140,10 @@ func (s storagePg) OrderStatus() repo.OrderStatusI {
 
 func (s storagePg) StatusChangeHistory() repo.StatusChangeHistoryI {
 	return s.statusChangeHistory
+}
+
+func (s storagePg) Attendance() repo.AttendanceI {
+	return s.attendance
 }
 
 func (s storagePg) Employee() repo.EmployeeI {
