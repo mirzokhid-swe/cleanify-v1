@@ -1,11 +1,15 @@
 package models
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"errors"
+)
 
 type CreateCompanyModel struct {
-	Name    string `json:"name" binding:"required" minLength:"2" maxLength:"255"`
-	OwnerId int64  `json:"owner_id" binding:"required"`
+	Name string `json:"name" binding:"required"`
 }
+
+var ErrCompanyNameTaken = errors.New("company name taken")
 
 type Company struct {
 	ID   string `json:"id"`

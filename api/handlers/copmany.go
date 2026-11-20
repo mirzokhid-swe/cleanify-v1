@@ -3,6 +3,7 @@ package handlers
 import (
 	"database/sql"
 	"errors"
+	"strings"
 
 	"bw-erp/api/http"
 	"bw-erp/models"
@@ -12,56 +13,32 @@ import (
 	"github.com/google/uuid"
 )
 
+// CreateCompanyModel: super admin yangi korxona qo'shadi; standart holatlar,
+// turlar, rollar va to'lov maqsadlari bilan birga yaratiladi.
 func (h *Handler) CreateCompanyModel(c *gin.Context) {
 	var body models.CreateCompanyModel
 	if err := c.ShouldBindJSON(&body); err != nil {
 		h.handleResponse(c, http.BadRequest, err.Error())
 		return
 	}
-
-	_, err := h.Stg.User().GetById(body.OwnerId)
-	if err != nil {
-		h.handleResponse(c, http.BadRequest, err.Error())
+	name := strings.TrimSpace(body.Name)
+	if name == "" {
+		h.handleResponse(c, http.BadRequest, "Korxona nomini kiriting")
 		return
 	}
 
-	id := uuid.New()
-
-	err = h.Stg.Company().Create(id.String(), body)
+	id := uuid.New().String()
+	err := h.Stg.Company().Create(id, name, currentUserID(c))
+	if errors.Is(err, models.ErrCompanyNameTaken) {
+		h.handleResponse(c, http.Conflict, "Bu nomli korxona bor")
+		return
+	}
 	if err != nil {
-		h.handleResponse(c, http.BadRequest, err.Error())
+		h.handleResponse(c, http.InternalServerError, err.Error())
 		return
 	}
 
-	h.handleResponse(c, http.Created, id)
-}
-
-func (h *Handler) GetCompanyByOwnerId(c *gin.Context) {
-	err := utils.TokenValid(c)
-	if err != nil {
-		h.handleResponse(c, http.BadRequest, err.Error())
-		return
-	}
-
-	jwtData, err := utils.ExtractTokenID(c)
-	if err != nil {
-		h.handleResponse(c, http.BadRequest, err.Error())
-		return
-	}
-
-	user, err := h.Stg.User().GetById(jwtData.UserID)
-	if err != nil {
-		h.handleResponse(c, http.BadRequest, err.Error())
-		return
-	}
-
-	company, err := h.Stg.Company().GetByOwnerId(user.ID)
-	if err != nil {
-		h.handleResponse(c, http.BadRequest, err.Error())
-		return
-	}
-
-	h.handleResponse(c, http.OK, company)
+	h.handleResponse(c, http.Created, gin.H{"id": id})
 }
 
 // currentUserID returns the id of the user set by UserActiveMiddleware (0 when absent).
