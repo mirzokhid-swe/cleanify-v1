@@ -21,6 +21,18 @@ type fakeCompanies struct {
 	blocked   bool
 	blockedBy int64
 	upserts   int
+
+	createdName string
+	createdBy   int64
+	createErr   error
+}
+
+func (f *fakeCompanies) Create(id string, name string, userID int64) error {
+	if f.createErr != nil {
+		return f.createErr
+	}
+	f.createdName, f.createdBy = name, userID
+	return nil
 }
 
 func (f *fakeCompanies) GetShow(id string) (models.CompanyShow, error) {
@@ -121,5 +133,33 @@ func TestBlockAndUnblockCompany(t *testing.T) {
 	w = httptest.NewRecorder()
 	if w = do(r, "GET", "/company", ""); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"users_count"`) {
 		t.Fatalf("list: code=%d body=%s", w.Code, w.Body.String())
+	}
+}
+
+func TestCreateCompany(t *testing.T) {
+	r, companies := newCompanyRouter(true)
+	w := do(r, "POST", "/company", `{"name":"  Toza Gilam "}`)
+	if w.Code != http.StatusCreated || !strings.Contains(w.Body.String(), `"id":"`) {
+		t.Fatalf("create: code=%d body=%s", w.Code, w.Body.String())
+	}
+	if companies.createdName != "Toza Gilam" || companies.createdBy != 8 {
+		t.Fatalf("stored name=%q by=%d", companies.createdName, companies.createdBy)
+	}
+
+	r, companies = newCompanyRouter(true)
+	for _, body := range []string{`{"name":"   "}`, `{}`} {
+		if w := do(r, "POST", "/company", body); w.Code != http.StatusBadRequest || companies.createdName != "" {
+			t.Fatalf("%s: code=%d stored=%q", body, w.Code, companies.createdName)
+		}
+	}
+
+	companies.createErr = models.ErrCompanyNameTaken
+	if w := do(r, "POST", "/company", `{"name":"Sifat"}`); w.Code != http.StatusConflict {
+		t.Fatalf("taken name: code=%d body=%s", w.Code, w.Body.String())
+	}
+
+	r, companies = newCompanyRouter(false)
+	if w := do(r, "POST", "/company", `{"name":"Toza Gilam"}`); w.Code != http.StatusForbidden || companies.createdName != "" {
+		t.Fatalf("not super admin: code=%d", w.Code)
 	}
 }

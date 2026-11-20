@@ -2,10 +2,14 @@ package postgres
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"testing"
 
+	"bw-erp/models"
+
+	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
@@ -88,5 +92,81 @@ func TestCompanyUsersCountExcludesDeleted(t *testing.T) {
 	}
 	if after.UsersCount != before.UsersCount {
 		t.Fatalf("users_count = %d, want %d (deleted user counted)", after.UsersCount, before.UsersCount)
+	}
+}
+
+// Create writes the company and every default in one transaction.
+func TestCompanyCreateAgainstDatabase(t *testing.T) {
+	db := testDB(t)
+	// Cleanups run last-in-first-out: the database closes after the rows are removed.
+	t.Cleanup(func() { db.Close() })
+	repo := NewCompanyRepo(db)
+
+	id := uuid.New().String()
+	name := "test-create-" + id
+	cleanup := func(companyID string) {
+		db.Exec(`delete from user_companies where company_id = $1`, companyID)
+		db.Exec(`delete from roles where company_id = $1::uuid`, companyID)
+		db.Exec(`delete from payment_purposes where company_id = $1::uuid`, companyID)
+		db.Exec(`delete from order_item_types where company_id = $1::uuid`, companyID)
+		db.Exec(`delete from order_statuses where company_id = $1::uuid`, companyID)
+		db.Exec(`delete from companies where id = $1::uuid`, companyID)
+	}
+	t.Cleanup(func() { cleanup(id) })
+
+	if err := repo.Create(id, name, 8); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	count := func(query string) int {
+		var n int
+		if err := db.Get(&n, query, id); err != nil {
+			t.Fatalf("%s: %v", query, err)
+		}
+		return n
+	}
+	if n := count(`select count(*) from order_statuses where company_id = $1::uuid and coalesce(color, '') <> ''`); n != 7 {
+		t.Fatalf("colored statuses: %d", n)
+	}
+	if n := count(`select count(*) from order_statuses where company_id = $1::uuid and number = 8 and slug = 'change_status_to_8' and "order" = 7`); n != 1 {
+		t.Fatalf("Omborda (8): %d", n)
+	}
+	if n := count(`select count(*) from order_item_types where company_id = $1::uuid`); n != 8 {
+		t.Fatalf("types: %d", n)
+	}
+	if n := count(`select count(*) from order_item_types where company_id = $1::uuid and
+		((name = 'Parda' and unit = 'weight' and price = 30000 and not is_countable) or
+		 (name = 'Ko''rpa' and unit = 'length' and price = 25000 and not is_countable) or
+		 (name = 'Odeyalo 50' and unit = 'piece' and price = 50000 and is_countable))`); n != 3 {
+		t.Fatalf("Parda/Ko'rpa/Odeyalo 50: %d", n)
+	}
+	if n := count(`select count(*) from roles where company_id = $1::uuid`); n != 4 {
+		t.Fatalf("roles: %d", n)
+	}
+	if n := count(`select count(*) from roles where company_id = $1::uuid and name = 'Admin'
+		and cardinality(permission_ids) = (select count(*) from permissions where scope = 'company')`); n != 1 {
+		t.Fatalf("Admin role with every company permission: %d", n)
+	}
+	if n := count(`select cardinality(permission_ids) from roles where company_id = $1::uuid and name = 'Kuryer'`); n != 8 {
+		t.Fatalf("Kuryer permissions: %d", n)
+	}
+	if n := count(`select count(*) from payment_purposes where company_id = $1::uuid`); n != 3 {
+		t.Fatalf("payment purposes: %d", n)
+	}
+	if n := count(`select count(*) from user_companies uc join roles r on r.id = uc.role_id
+		where uc.company_id = $1 and uc.user_id = 8 and r.name = 'Admin'`); n != 1 {
+		t.Fatalf("creator as Admin: %d", n)
+	}
+
+	// The same name again: an error and nothing left behind.
+	second := uuid.New().String()
+	t.Cleanup(func() { cleanup(second) })
+	if err := repo.Create(second, name, 8); !errors.Is(err, models.ErrCompanyNameTaken) {
+		t.Fatalf("duplicate name: want ErrCompanyNameTaken, got %v", err)
+	}
+	var left int
+	db.Get(&left, `select (select count(*) from companies where id = $1::uuid) + (select count(*) from order_statuses where company_id = $1::uuid)`, second)
+	if left != 0 {
+		t.Fatalf("duplicate left %d rows", left)
 	}
 }

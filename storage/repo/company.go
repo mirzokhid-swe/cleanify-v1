@@ -7,8 +7,10 @@ import (
 )
 
 type CompanyStorageI interface {
-	Create(id string, entity models.CreateCompanyModel) error
-	GetByOwnerId(ownerId int64) ([]models.Company, error)
+	// Create writes the company with its default statuses, item types, roles and
+	// payment purposes and attaches userID as Admin, all in one transaction.
+	// Returns models.ErrCompanyNameTaken when the name is in use.
+	Create(id string, name string, userID int64) error
 	GetById(id string) (models.Company, error)
 	GetList() ([]models.CompanyListItem, error)
 	// GetShow returns sql.ErrNoRows when the company does not exist.
