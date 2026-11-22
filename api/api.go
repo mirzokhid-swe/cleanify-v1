@@ -222,6 +222,10 @@ func usersRoutes(g *gin.RouterGroup, h *handlers.Handler, auth ...gin.HandlerFun
 	g.GET("/employees/show", authOnly(h.ShowEmployeeDetailedData)...)
 	g.POST("/employees/add-transaction", authOnly(h.AddTransaction)...)
 	g.POST("/employees/attendance", authOnly(h.Attendance)...)
+	g.GET("/employees/attendance", authOnly(h.GetAttendance)...)
+	g.POST("/employees/attendance/mark", with("attendance_employee", h.MarkAttendance)...)
+	g.POST("/employees/attendance/mark-day", with("attendance_employee", h.MarkAttendanceDay)...)
+	g.POST("/employees/attendance/fill", with("attendance_employee", h.FillAttendance)...)
 }
 
 // rolesRoutes registers the role routes. auth must leave a models.User in the
