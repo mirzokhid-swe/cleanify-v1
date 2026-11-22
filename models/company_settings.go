@@ -45,8 +45,9 @@ var SettingsCatalog = map[string]SettingDef{
 	"telegram_location": {Type: "bool", Default: false},
 	// Ro'yxat kartasi va buyurtma sahifasida raqamli ID ko'rsatiladimi.
 	"order_id_visible": {Type: "bool", Default: false},
-	// To'lov chegarasi: to'lov buyurtma summasining percent% idan kam yoki
-	// summa + percent% dan ko'p bo'lmasin. scope: har bir to'lov yoki jami to'langan.
+	// To'lov chegarasi: to'lov buyurtma summasidan ko'pi bilan percent% ga
+	// farq qilsin (summa − percent% … summa + percent%).
+	// scope: har bir to'lov yoki jami to'langan.
 	"payment_limit_enabled": {Type: "bool", Default: false},
 	"payment_limit_percent": {Type: "int", Default: 15, Min: &one, Max: &hundred},
 	"payment_limit_scope":   {Type: "enum", Default: "total", Values: []string{"total", "transaction"}},
