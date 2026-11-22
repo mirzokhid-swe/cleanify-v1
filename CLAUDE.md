@@ -25,6 +25,7 @@ Lokal stack (Go + Laravel + front) uchun `../Makefile` (`make`, `make link`, `ma
 - `api/api.go` — yo'llar. Yo'lga xos middleware **har yo'lga alohida** beriladi (`orderItemTypeRoutes`, `companyRoutes` yordamchilari namuna); `group.Use(...)` zanjiri to'planib ketadi, ishlatilmaydi.
 - `api/middleware/` — `AuthMiddleware` (JWT, Laravel bilan bitta `API_SECRET`), `UserActiveMiddleware` (kontekstga `user`), `RequirePermission(slug)` (so'rovdagi `company_id` bo'yicha), `UserCan(c, companyID, slug)` (kompaniya buyurtmadan olinganda), `SuperAdminMiddleware`.
 - `api/handlers/` — javob `h.handleResponse(c, http.<Status>, data)` (`api/http/status.go`): huquq yo'q → `http.PermissionDenied` (`{"status":"PERMISSION_DENIED"}`), topilmadi → `http.NOT_FOUND`, kompaniya cheklangan → 423. Front shu shartnomaga tayanadi.
+- `POST /api/v1/client-errors` (`api/handlers/client_error.go`, `models/client_error.go`) — front o'zidagi xatolikni tokensiz qabul qilib, `ErrorReport` bilan bir xil Telegram guruhga yuboradi; daqiqasiga 20 ta. Spec: `../cleanify-docs/implementation/frontend-xatoliklar.md`.
 - `models/` — so'rov/javob strukturalari (gin `binding`), sof mantiq (`MeasureForUnit`, `UnitIsCountable`...). `storage/repo/` interfeyslar, `storage/postgres/` SQL.
 - Testlar: handler'lar `api/*_test.go` (httptest + fake storage, `api/order_item_type_test.go` namuna); middleware `api/middleware/*_test.go`; SQL `storage/postgres/*_db_test.go` (`.env` dan DB, yo'q bo'lsa skip).
 
