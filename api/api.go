@@ -14,7 +14,11 @@ func SetUpRouter(h handlers.Handler, cfg config.Config) (r *gin.Engine) {
 	r = gin.New()
 	r.Use(gin.Logger(), gin.Recovery())
 	// Har qanday xatolik (>=400, panic) Telegram guruhga (ERROR_BOT_TOKEN, ERROR_CHAT_ID).
-	r.Use(middleware.ErrorReport(cfg.Release_Mode, middleware.TelegramSender(cfg.ErrorBotToken, cfg.ErrorChatID)))
+	errorSend := middleware.TelegramSender(cfg.ErrorBotToken, cfg.ErrorChatID)
+	r.Use(middleware.ErrorReport(cfg.Release_Mode, errorSend))
+	if h.ClientErrorSend == nil {
+		h.ClientErrorSend = errorSend
+	}
 	if cfg.ErrorBotToken != "" && cfg.ErrorChatID != "" {
 		log.Println("[error-report] telegram yoqiq, chat", cfg.ErrorChatID)
 	} else {
@@ -28,6 +32,9 @@ func SetUpRouter(h handlers.Handler, cfg config.Config) (r *gin.Engine) {
 
 	baseRouter := r.Group("/api/v1")
 	{
+		// Front o'zidagi xatolikni yuboradi; token talab qilinmaydi.
+		baseRouter.POST("/client-errors", h.ReportClientError)
+
 		{
 			authRouter := baseRouter.Group("/auth")
 			// authRouter.POST("/login", h.AuthUser)
