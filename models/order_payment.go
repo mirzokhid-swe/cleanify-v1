@@ -36,15 +36,18 @@ func PaymentAmountError(amount float64) string {
 }
 
 // PaymentLimitErrorFor is the optional company rule on payment size: a payment
-// (scope "transaction") or the order's paid total (scope "total") must be at
-// least percent% of the order total and at most total + that minimum.
-// Returns "" when it passes. Orders without a price are free.
+// (scope "transaction") or the order's paid total (scope "total") may differ
+// from the order total by at most percent% in either direction
+// (total − percent% … total + percent%; owner 2026-11-22, earlier the lower
+// bound was percent% of the total itself). Returns "" when it passes. Orders
+// without a price are free.
 func PaymentLimitErrorFor(amount float64, s PaymentSummary, enabled bool, percent int, scope string) string {
 	if !enabled || s.Total <= 0 {
 		return ""
 	}
-	min := math.Round(s.Total * float64(percent) / 100)
-	max := s.Total + min
+	delta := math.Round(s.Total * float64(percent) / 100)
+	min := s.Total - delta
+	max := s.Total + delta
 	// JS tomoni bilan bir xil: noma'lum qiymat "total" deb qaraladi.
 	checked := s.Paid + amount
 	if scope == "transaction" {

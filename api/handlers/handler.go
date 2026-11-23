@@ -12,6 +12,8 @@ import (
 type Handler struct {
 	Stg storage.StorageI
 	Cfg config.Config
+	// Front xatoliklari shu funksiya bilan yuboriladi (SetUpRouter Telegram sender qo'yadi).
+	ClientErrorSend func(string)
 }
 
 func NewHandler(stg storage.StorageI, cfg config.Config) Handler {
