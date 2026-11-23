@@ -3,7 +3,10 @@ package api
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"bw-erp/api/handlers"
@@ -106,6 +109,30 @@ func TestVerifyAuthCodeRateLimit(t *testing.T) {
 	}
 	if w := do(r, "POST", "/auth/verify-code", `{"code":"111111"}`); w.Code != http.StatusTooManyRequests {
 		t.Fatalf("11th attempt: code=%d body=%s", w.Code, w.Body.String())
+	}
+}
+
+// Limiter haqiqiy ulanish manziliga tayanishi kerak: X-Forwarded-For ni
+// hujumchi o'zi yozadi, u bilan limit aylanib o'tilmasligi shart.
+func TestVerifyAuthCodeRateLimitIgnoresForwardedFor(t *testing.T) {
+	r := newAuthCodeRouter(t, false)
+	for i := 0; i < 10; i++ {
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest("POST", "/auth/verify-code", strings.NewReader(`{"code":"111111"}`))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-Forwarded-For", fmt.Sprintf("10.0.0.%d", i+1))
+		r.ServeHTTP(w, req)
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("attempt %d: code=%d", i+1, w.Code)
+		}
+	}
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/auth/verify-code", strings.NewReader(`{"code":"111111"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Forwarded-For", "10.0.0.99")
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusTooManyRequests {
+		t.Fatalf("11th attempt with fresh XFF: code=%d, limiter spoofed", w.Code)
 	}
 }
 

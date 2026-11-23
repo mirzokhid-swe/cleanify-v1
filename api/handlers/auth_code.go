@@ -4,6 +4,7 @@ import (
 	"bw-erp/api/http"
 	"bw-erp/models"
 	"bw-erp/pkg/utils"
+	"net"
 	"strconv"
 	"sync"
 	"time"
@@ -44,7 +45,13 @@ func ResetAuthCodeLimiter() {
 // VerifyAuthCode: auth bot bergan bir martalik kodni JWT'ga almashtiradi.
 // Token talab qilinmaydi — bu kirishning o'zi.
 func (h *Handler) VerifyAuthCode(c *gin.Context) {
-	if !authCodeAllowed(c.ClientIP(), time.Now()) {
+	// c.ClientIP() emas: trusted proxy sozlanmagan, X-Forwarded-For ni
+	// hujumchi o'zi yozib limitni aylanib o'tadi. Haqiqiy ulanish manzili.
+	ip, _, err := net.SplitHostPort(c.Request.RemoteAddr)
+	if err != nil {
+		ip = c.Request.RemoteAddr
+	}
+	if !authCodeAllowed(ip, time.Now()) {
 		h.handleResponse(c, http.TooManyRequests, "Urinishlar tugadi")
 		return
 	}
