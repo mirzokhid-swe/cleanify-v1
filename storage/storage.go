@@ -29,6 +29,7 @@ type StorageI interface {
 	Notification() repo.NotificationI
 	Comment() repo.CommentStorageI
 	WebPush() repo.WebPushStorageI
+	AuthCode() repo.AuthCodeI
 }
 
 type storagePg struct {
@@ -54,6 +55,7 @@ type storagePg struct {
 	notification        repo.NotificationI
 	comment             repo.CommentStorageI
 	webPush             repo.WebPushStorageI
+	authCode            repo.AuthCodeI
 }
 
 func NewStoragePg(db *sqlx.DB) StorageI {
@@ -79,6 +81,7 @@ func NewStoragePg(db *sqlx.DB) StorageI {
 		notification:        postgres.NewNotificationRepo(db),
 		comment:             postgres.NewCommentRepo(db),
 		webPush:             postgres.NewWebPushRepo(db),
+		authCode:            postgres.NewAuthCodeRepo(db),
 	}
 }
 
@@ -164,4 +167,8 @@ func (s storagePg) Comment() repo.CommentStorageI {
 
 func (s *storagePg) WebPush() repo.WebPushStorageI {
 	return s.webPush
+}
+
+func (s storagePg) AuthCode() repo.AuthCodeI {
+	return s.authCode
 }

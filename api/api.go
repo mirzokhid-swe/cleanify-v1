@@ -40,6 +40,8 @@ func SetUpRouter(h handlers.Handler, cfg config.Config) (r *gin.Engine) {
 			// authRouter.POST("/login", h.AuthUser)
 			// Middleware har yo'lga alohida: group.Use to'planib, refresh-token ga ham
 			// token tekshiruvini qo'shib qo'yardi (muddati o'tgan token bilan refresh 403).
+			// Auth bot bergan bir martalik kodni JWT'ga almashtirish; tokensiz.
+			authRouter.POST("/verify-code", h.VerifyAuthCode)
 			authRouter.POST("/me", middleware.UserActiveMiddleware(h.Stg), h.CurrentUser)
 			authRouter.POST("/refresh-token", h.RefreshToken)
 			authRouter.POST("/change-password", middleware.AuthMiddleware(), middleware.UserActiveMiddleware(h.Stg), h.ChangePassword)

@@ -16,6 +16,10 @@ type AuthorizationResponse struct {
 	RefreshToken string `json:"refresh_token"`
 }
 
+type VerifyAuthCodeRequest struct {
+	Code string `json:"code" binding:"required,len=6,numeric"`
+}
+
 type RefreshTokenRequest struct {
 	RefreshToken string `json:"refresh_token" binding:"required"`
 }
